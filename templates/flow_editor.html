@@ -1,0 +1,809 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if flow else 'New' }} Flow - Task Scheduler{% endblock %}
+{% block extra_head %}
+<style>
+#flowCanvas {
+    background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+    background-size: 20px 20px;
+    cursor: grab;
+    overflow: hidden;
+}
+#flowCanvas.dark-grid {
+    background-image: radial-gradient(circle, #475569 1px, transparent 1px);
+}
+#flowCanvas.connecting {
+    cursor: crosshair;
+}
+.node {
+    position: absolute;
+    width: 220px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    border: 2px solid transparent;
+    user-select: none;
+    z-index: 10;
+}
+.node.dragging { z-index: 100; }
+.node.error { border-color: #ef4444 !important; }
+.node-header {
+    padding: 8px 12px;
+    border-radius: 6px 6px 0 0;
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.node-function .node-header { background: #dbeafe; color: #1e40af; }
+.dark .node-function .node-header { background: #1e3a8a; color: #bfdbfe; }
+.node-constant .node-header { background: #fef3c7; color: #92400e; }
+.dark .node-constant .node-header { background: #78350f; color: #fde68a; }
+.node-body { padding: 8px 12px; }
+.port {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    position: absolute;
+    border: 2px solid white;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+}
+.port:hover { transform: scale(1.3); }
+.port-input { background: #22c55e; left: -6px; }
+.port-output { background: #3b82f6; right: -6px; }
+.connection-line {
+    fill: none;
+    stroke: #6b7280;
+    stroke-width: 2;
+    cursor: pointer;
+}
+.connection-line:hover { stroke: #ef4444; stroke-width: 3; }
+.connection-line.selected { stroke: #ef4444; }
+.sidebar-item {
+    cursor: grab;
+    transition: all 0.15s;
+}
+.sidebar-item:hover { transform: translateX(4px); }
+.sidebar-item:active { cursor: grabbing; }
+#outputPanel {
+    transition: transform 0.3s ease;
+}
+#outputPanel.hidden { transform: translateY(100%); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="h-screen flex flex-col -mx-4 -my-6" style="height: calc(100vh - 56px);">
+    <!-- Toolbar -->
+    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center gap-3 flex-wrap">
+        <input type="text" id="flowName" value="{{ flow.name if flow else 'New Flow' }}" 
+            class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-medium w-48 focus:ring-2 focus:ring-primary-500">
+
+        <select id="scheduleType" onchange="updateScheduleFields()" class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+            <option value="once" {% if flow and flow.schedule_type == 'once' %}selected{% endif %}>Once</option>
+            <option value="interval" {% if flow and flow.schedule_type == 'interval' %}selected{% endif %}>Interval</option>
+            <option value="daily" {% if flow and flow.schedule_type == 'daily' %}selected{% endif %}>Daily</option>
+            <option value="weekly" {% if flow and flow.schedule_type == 'weekly' %}selected{% endif %}>Weekly</option>
+            <option value="monthly" {% if flow and flow.schedule_type == 'monthly' %}selected{% endif %}>Monthly</option>
+            <option value="monthly_weekday" {% if flow and flow.schedule_type == 'monthly_weekday' %}selected{% endif %}>Monthly Weekday</option>
+        </select>
+
+        <span id="scheduleFields" class="flex items-center gap-2"></span>
+
+        <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" id="flowEnabled" {% if not flow or flow.enabled %}checked{% endif %} class="w-4 h-4 text-primary-600 rounded">
+            <span class="text-gray-700 dark:text-gray-300">Enabled</span>
+        </label>
+
+        <div class="flex-1"></div>
+
+        <button onclick="openFunctionModal()" class="text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 px-3 py-1.5 rounded transition">+ Function</button>
+        <button onclick="openConstantModal()" class="text-xs bg-amber-100 hover:bg-amber-200 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-700 dark:text-amber-300 px-3 py-1.5 rounded transition">+ Constant</button>
+        <button onclick="testFlow()" class="text-xs bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300 px-3 py-1.5 rounded transition">Test</button>
+        <button onclick="saveFlow()" class="text-xs bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded font-medium transition">Save</button>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <div class="w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+            <div class="flex border-b border-gray-200 dark:border-gray-700">
+                <button onclick="switchSidebarTab('functions')" id="sidebar-tab-functions" class="flex-1 py-2 text-sm font-medium text-primary-600 border-b-2 border-primary-600">Functions</button>
+                <button onclick="switchSidebarTab('constants')" id="sidebar-tab-constants" class="flex-1 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent">Constants</button>
+            </div>
+
+            <div id="sidebar-functions" class="flex-1 overflow-y-auto p-2 space-y-1">
+                {% for func in functions %}
+                <div class="sidebar-item bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+                     draggable="true"
+                     data-type="function"
+                     data-id="{{ func.id }}"
+                     data-name="{{ func.name }}"
+                     data-params='{{ func.get_params()|tojson }}'>
+                    <div class="font-medium text-sm text-gray-900 dark:text-white">{{ func.name }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ func.description or 'No description' }}</div>
+                    <div class="text-xs text-gray-400 mt-1">{{ func.get_params()|length }} params</div>
+                </div>
+                {% endfor %}
+                {% if not functions %}
+                <div class="text-sm text-gray-400 text-center py-8">No functions yet. Click + Function to create one.</div>
+                {% endif %}
+            </div>
+
+            <div id="sidebar-constants" class="flex-1 overflow-y-auto p-2 space-y-1 hidden">
+                {% for const in constants %}
+                <div class="sidebar-item bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+                     draggable="true"
+                     data-type="constant"
+                     data-id="{{ const.id }}"
+                     data-name="{{ const.name }}"
+                     data-value="{{ const.value }}"
+                     data-ctype="{{ const.type }}">
+                    <div class="font-medium text-sm text-gray-900 dark:text-white">{{ const.name }}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ const.value }} ({{ const.type }})</div>
+                </div>
+                {% endfor %}
+                {% if not constants %}
+                <div class="text-sm text-gray-400 text-center py-8">No constants yet. Click + Constant to create one.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Canvas -->
+        <div class="flex-1 relative overflow-hidden" id="canvasContainer">
+            <svg id="flowCanvas" class="w-full h-full absolute top-0 left-0">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280" />
+                    </marker>
+                </defs>
+                <g id="connectionsLayer"></g>
+                <g id="nodesLayer"></g>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Output Panel -->
+    <div id="outputPanel" class="absolute bottom-0 right-0 w-96 max-h-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-tl-xl shadow-lg z-50 hidden">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Test Output</span>
+            <button onclick="document.getElementById('outputPanel').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
+        </div>
+        <pre id="outputContent" class="p-4 text-xs font-mono text-gray-800 dark:text-gray-200 overflow-auto max-h-52"></pre>
+    </div>
+</div>
+
+<!-- Function Modal -->
+<div id="functionModal" class="modal fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto mx-4">
+        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Function Library</h3>
+            <button onclick="closeModal('functionModal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
+        </div>
+        <div class="p-4 space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <input type="text" id="funcName" placeholder="Function name" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                <input type="text" id="funcReturn" placeholder="Return type" value="any" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+            </div>
+            <input type="text" id="funcDesc" placeholder="Description" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+            <div>
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Parameters</label>
+                    <button onclick="addFuncParam()" class="text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400">+ Add Param</button>
+                </div>
+                <div id="funcParams" class="space-y-2"></div>
+            </div>
+            <textarea id="funcCode" rows="8" placeholder="def my_function(param1, param2):
+    return param1 + param2"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm"></textarea>
+            <div class="flex gap-2">
+                <button onclick="saveFunction()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Save Function</button>
+                <button onclick="closeModal('functionModal')" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium">Cancel</button>
+            </div>
+            <div id="functionList" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2 max-h-48 overflow-y-auto"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Constant Modal -->
+<div id="constantModal" class="modal fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg mx-4">
+        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Constant Library</h3>
+            <button onclick="closeModal('constantModal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
+        </div>
+        <div class="p-4 space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <input type="text" id="constName" placeholder="Constant name" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                <select id="constType" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                    <option value="str">String</option>
+                    <option value="int">Integer</option>
+                    <option value="float">Float</option>
+                    <option value="bool">Boolean</option>
+                    <option value="json">JSON</option>
+                </select>
+            </div>
+            <input type="text" id="constValue" placeholder="Value" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+            <div class="flex gap-2">
+                <button onclick="saveConstant()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Save Constant</button>
+                <button onclick="closeModal('constantModal')" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium">Cancel</button>
+            </div>
+            <div id="constantList" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2 max-h-48 overflow-y-auto"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+let nodes = {{ flow.get_nodes()|tojson if flow else '[]' }};
+let connections = {{ flow.get_connections()|tojson if flow else '[]' }};
+let nextNodeId = nodes.length > 0 ? Math.max(...nodes.map(n => parseInt(n.id))) + 1 : 1;
+let nextConnId = connections.length > 0 ? Math.max(...connections.map(c => parseInt(c.id))) + 1 : 1;
+let draggingNode = null;
+let dragOffset = {x: 0, y: 0};
+let connectingFrom = null;
+let connectingParam = null;
+let selectedConnection = null;
+
+const canvas = document.getElementById('flowCanvas');
+const nodesLayer = document.getElementById('nodesLayer');
+const connectionsLayer = document.getElementById('connectionsLayer');
+const container = document.getElementById('canvasContainer');
+
+function getCanvasPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {x: e.clientX - rect.left, y: e.clientY - rect.top};
+}
+
+function renderNodes() {
+    nodesLayer.innerHTML = '';
+    nodes.forEach(node => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+        g.setAttribute('class', `node ${node.type === 'function' ? 'node-function' : 'node-constant'} ${node.error ? 'error' : ''}`);
+        g.setAttribute('data-id', node.id);
+
+        const nodeHeight = node.type === 'function' ? 60 + (node.params?.length || 0) * 32 : 60;
+
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('width', '220');
+        rect.setAttribute('height', nodeHeight);
+        rect.setAttribute('rx', '8');
+        rect.setAttribute('fill', 'white');
+        rect.setAttribute('stroke', node.error ? '#ef4444' : '#e5e7eb');
+        rect.setAttribute('stroke-width', '2');
+        g.appendChild(rect);
+
+        const header = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        header.setAttribute('width', '220');
+        header.setAttribute('height', '32');
+        header.setAttribute('rx', '8');
+        header.setAttribute('fill', node.type === 'function' ? '#dbeafe' : '#fef3c7');
+        g.appendChild(header);
+
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        title.setAttribute('x', '12');
+        title.setAttribute('y', '21');
+        title.setAttribute('fill', node.type === 'function' ? '#1e40af' : '#92400e');
+        title.setAttribute('font-size', '13');
+        title.setAttribute('font-weight', '600');
+        title.textContent = node.name;
+        g.appendChild(title);
+
+        const delBtn = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        delBtn.setAttribute('x', '205');
+        delBtn.setAttribute('y', '21');
+        delBtn.setAttribute('fill', '#9ca3af');
+        delBtn.setAttribute('cursor', 'pointer');
+        delBtn.setAttribute('font-size', '14');
+        delBtn.textContent = '×';
+        delBtn.onclick = (e) => { e.stopPropagation(); deleteNode(node.id); };
+        g.appendChild(delBtn);
+
+        const outPort = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        outPort.setAttribute('cx', '220');
+        outPort.setAttribute('cy', '16');
+        outPort.setAttribute('r', '6');
+        outPort.setAttribute('fill', '#3b82f6');
+        outPort.setAttribute('stroke', 'white');
+        outPort.setAttribute('stroke-width', '2');
+        outPort.setAttribute('cursor', 'pointer');
+        outPort.onmousedown = (e) => startConnection(e, node.id, null);
+        g.appendChild(outPort);
+
+        if (node.type === 'function' && node.params) {
+            node.params.forEach((param, idx) => {
+                const y = 44 + idx * 32;
+
+                const inPort = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                inPort.setAttribute('cx', '0');
+                inPort.setAttribute('cy', y);
+                inPort.setAttribute('r', '6');
+                inPort.setAttribute('fill', '#22c55e');
+                inPort.setAttribute('stroke', 'white');
+                inPort.setAttribute('stroke-width', '2');
+                inPort.setAttribute('cursor', 'pointer');
+                inPort.onmouseup = (e) => endConnection(e, node.id, param.name);
+                g.appendChild(inPort);
+
+                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                label.setAttribute('x', '14');
+                label.setAttribute('y', y + 4);
+                label.setAttribute('fill', '#6b7280');
+                label.setAttribute('font-size', '11');
+                label.textContent = param.name;
+                g.appendChild(label);
+
+                const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                fo.setAttribute('x', '80');
+                fo.setAttribute('y', y - 10);
+                fo.setAttribute('width', '130');
+                fo.setAttribute('height', '24');
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = node.inputs?.[param.name] || '';
+                input.placeholder = param.type || 'value';
+                input.className = 'w-full px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
+                input.oninput = (e) => {
+                    if (!node.inputs) node.inputs = {};
+                    node.inputs[param.name] = e.target.value;
+                };
+                fo.appendChild(input);
+                g.appendChild(fo);
+            });
+        } else if (node.type === 'constant') {
+            const valText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            valText.setAttribute('x', '12');
+            valText.setAttribute('y', '52');
+            valText.setAttribute('fill', '#6b7280');
+            valText.setAttribute('font-size', '11');
+            valText.textContent = `${node.constant_value} (${node.constant_type})`;
+            g.appendChild(valText);
+
+            const outPort2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outPort2.setAttribute('cx', '220');
+            outPort2.setAttribute('cy', '48');
+            outPort2.setAttribute('r', '6');
+            outPort2.setAttribute('fill', '#3b82f6');
+            outPort2.setAttribute('stroke', 'white');
+            outPort2.setAttribute('stroke-width', '2');
+            outPort2.setAttribute('cursor', 'pointer');
+            outPort2.onmousedown = (e) => startConnection(e, node.id, null);
+            g.appendChild(outPort2);
+        }
+
+        g.onmousedown = (e) => {
+            if (e.target.tagName === 'input' || e.target.tagName === 'circle' || e.target.tagName === 'text') return;
+            draggingNode = node;
+            const pt = getCanvasPoint(e);
+            dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
+        };
+
+        nodesLayer.appendChild(g);
+    });
+}
+
+function renderConnections() {
+    connectionsLayer.innerHTML = '';
+    connections.forEach(conn => {
+        const srcNode = nodes.find(n => n.id === conn.source);
+        const tgtNode = nodes.find(n => n.id === conn.target);
+        if (!srcNode || !tgtNode) return;
+
+        let srcY = 16;
+        if (srcNode.type === 'constant') srcY = 48;
+
+        let tgtY = 16;
+        if (tgtNode.type === 'function' && tgtNode.params) {
+            const pIdx = tgtNode.params.findIndex(p => p.name === conn.targetParam);
+            if (pIdx >= 0) tgtY = 44 + pIdx * 32;
+        }
+
+        const sx = srcNode.x + 220;
+        const sy = srcNode.y + srcY;
+        const tx = tgtNode.x;
+        const ty = tgtNode.y + tgtY;
+
+        const cp1x = sx + (tx - sx) * 0.5;
+        const cp1y = sy;
+        const cp2x = tx - (tx - sx) * 0.5;
+        const cp2y = ty;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', `M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${tx} ${ty}`);
+        path.setAttribute('class', `connection-line ${selectedConnection === conn.id ? 'selected' : ''}`);
+        path.setAttribute('marker-end', 'url(#arrowhead)');
+        path.onclick = (e) => {
+            e.stopPropagation();
+            if (selectedConnection === conn.id) {
+                connections = connections.filter(c => c.id !== conn.id);
+                selectedConnection = null;
+            } else {
+                selectedConnection = conn.id;
+            }
+            renderConnections();
+        };
+        connectionsLayer.appendChild(path);
+    });
+}
+
+function startConnection(e, nodeId, param) {
+    e.stopPropagation();
+    connectingFrom = nodeId;
+    connectingParam = param;
+    canvas.classList.add('connecting');
+}
+
+function endConnection(e, nodeId, paramName) {
+    e.stopPropagation();
+    if (connectingFrom && connectingFrom !== nodeId) {
+        const exists = connections.some(c => c.source === connectingFrom && c.target === nodeId && c.targetParam === paramName);
+        if (!exists) {
+            connections.push({id: String(nextConnId++), source: connectingFrom, target: nodeId, targetParam: paramName});
+            renderConnections();
+        }
+    }
+    connectingFrom = null;
+    connectingParam = null;
+    canvas.classList.remove('connecting');
+}
+
+function deleteNode(nodeId) {
+    nodes = nodes.filter(n => n.id !== nodeId);
+    connections = connections.filter(c => c.source !== nodeId && c.target !== nodeId);
+    renderNodes();
+    renderConnections();
+}
+
+container.addEventListener('mousemove', (e) => {
+    if (draggingNode) {
+        const pt = getCanvasPoint(e);
+        draggingNode.x = Math.max(0, pt.x - dragOffset.x);
+        draggingNode.y = Math.max(0, pt.y - dragOffset.y);
+        renderNodes();
+        renderConnections();
+    }
+});
+
+container.addEventListener('mouseup', () => {
+    draggingNode = null;
+    connectingFrom = null;
+    canvas.classList.remove('connecting');
+});
+
+container.addEventListener('click', () => {
+    selectedConnection = null;
+    renderConnections();
+});
+
+container.addEventListener('dragover', (e) => e.preventDefault());
+container.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const data = JSON.parse(e.dataTransfer.getData('application/json'));
+    const pt = getCanvasPoint(e);
+
+    const node = {
+        id: String(nextNodeId++),
+        type: data.type,
+        x: pt.x - 110,
+        y: pt.y - 20,
+        name: data.name,
+        inputs: {}
+    };
+
+    if (data.type === 'function') {
+        node.function_id = data.id;
+        node.params = data.params || [];
+    } else {
+        node.constant_id = data.id;
+        node.constant_value = data.value;
+        node.constant_type = data.ctype;
+    }
+
+    nodes.push(node);
+    renderNodes();
+});
+
+document.querySelectorAll('.sidebar-item').forEach(item => {
+    item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('application/json', JSON.stringify({
+            type: item.dataset.type,
+            id: item.dataset.id,
+            name: item.dataset.name,
+            params: item.dataset.params ? JSON.parse(item.dataset.params) : [],
+            value: item.dataset.value,
+            ctype: item.dataset.ctype
+        }));
+    });
+});
+
+function switchSidebarTab(tab) {
+    document.getElementById('sidebar-functions').classList.toggle('hidden', tab !== 'functions');
+    document.getElementById('sidebar-constants').classList.toggle('hidden', tab !== 'constants');
+    document.getElementById('sidebar-tab-functions').classList.toggle('text-primary-600', tab === 'functions');
+    document.getElementById('sidebar-tab-functions').classList.toggle('border-primary-600', tab === 'functions');
+    document.getElementById('sidebar-tab-functions').classList.toggle('text-gray-500', tab !== 'functions');
+    document.getElementById('sidebar-tab-functions').classList.toggle('border-transparent', tab !== 'functions');
+    document.getElementById('sidebar-tab-constants').classList.toggle('text-primary-600', tab === 'constants');
+    document.getElementById('sidebar-tab-constants').classList.toggle('border-primary-600', tab === 'constants');
+    document.getElementById('sidebar-tab-constants').classList.toggle('text-gray-500', tab !== 'constants');
+    document.getElementById('sidebar-tab-constants').classList.toggle('border-transparent', tab !== 'constants');
+}
+
+function updateScheduleFields() {
+    const type = document.getElementById('scheduleType').value;
+    const container = document.getElementById('scheduleFields');
+    const config = {{ flow.get_schedule_config()|tojson if flow else '{}' }};
+
+    let html = '';
+    switch(type) {
+        case 'once':
+            html = `<input type="datetime-local" id="sched_datetime" value="${config.datetime || ''}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            break;
+        case 'interval':
+            html = `<input type="number" id="sched_value" value="${config.value || 1}" min="1" class="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <select id="sched_unit" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <option value="minutes" ${config.unit === 'minutes' ? 'selected' : ''}>min</option>
+                        <option value="hours" ${config.unit === 'hours' ? 'selected' : ''}>hr</option>
+                        <option value="days" ${config.unit === 'days' ? 'selected' : ''}>day</option>
+                    </select>`;
+            break;
+        case 'daily':
+            html = `<input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            break;
+        case 'weekly':
+            html = `<select id="sched_day" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <option value="mon" ${config.day === 'mon' ? 'selected' : ''}>Mon</option>
+                        <option value="tue" ${config.day === 'tue' ? 'selected' : ''}>Tue</option>
+                        <option value="wed" ${config.day === 'wed' ? 'selected' : ''}>Wed</option>
+                        <option value="thu" ${config.day === 'thu' ? 'selected' : ''}>Thu</option>
+                        <option value="fri" ${config.day === 'fri' ? 'selected' : ''}>Fri</option>
+                        <option value="sat" ${config.day === 'sat' ? 'selected' : ''}>Sat</option>
+                        <option value="sun" ${config.day === 'sun' ? 'selected' : ''}>Sun</option>
+                    </select>
+                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            break;
+        case 'monthly':
+            html = `<input type="number" id="sched_day" value="${config.day || 1}" min="1" max="31" class="w-14 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            break;
+        case 'monthly_weekday':
+            html = `<select id="sched_ordinal" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <option value="1st" ${config.ordinal === '1st' ? 'selected' : ''}>1st</option>
+                        <option value="2nd" ${config.ordinal === '2nd' ? 'selected' : ''}>2nd</option>
+                        <option value="3rd" ${config.ordinal === '3rd' ? 'selected' : ''}>3rd</option>
+                        <option value="4th" ${config.ordinal === '4th' ? 'selected' : ''}>4th</option>
+                        <option value="last" ${config.ordinal === 'last' ? 'selected' : ''}>last</option>
+                    </select>
+                    <select id="sched_weekday" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <option value="mon" ${config.weekday === 'mon' ? 'selected' : ''}>Mon</option>
+                        <option value="tue" ${config.weekday === 'tue' ? 'selected' : ''}>Tue</option>
+                        <option value="wed" ${config.weekday === 'wed' ? 'selected' : ''}>Wed</option>
+                        <option value="thu" ${config.weekday === 'thu' ? 'selected' : ''}>Thu</option>
+                        <option value="fri" ${config.weekday === 'fri' ? 'selected' : ''}>Fri</option>
+                        <option value="sat" ${config.weekday === 'sat' ? 'selected' : ''}>Sat</option>
+                        <option value="sun" ${config.weekday === 'sun' ? 'selected' : ''}>Sun</option>
+                    </select>
+                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            break;
+    }
+    container.innerHTML = html;
+}
+
+function getScheduleConfig() {
+    const type = document.getElementById('scheduleType').value;
+    const config = {};
+    const dt = document.getElementById('sched_datetime');
+    if (dt) config.datetime = dt.value;
+    const val = document.getElementById('sched_value');
+    if (val) config.value = parseInt(val.value);
+    const unit = document.getElementById('sched_unit');
+    if (unit) config.unit = unit.value;
+    const time = document.getElementById('sched_time');
+    if (time) config.time = time.value;
+    const day = document.getElementById('sched_day');
+    if (day) config.day = day.value;
+    const ordinal = document.getElementById('sched_ordinal');
+    if (ordinal) config.ordinal = ordinal.value;
+    const weekday = document.getElementById('sched_weekday');
+    if (weekday) config.weekday = weekday.value;
+    return config;
+}
+
+async function testFlow() {
+    const panel = document.getElementById('outputPanel');
+    const content = document.getElementById('outputContent');
+    panel.classList.remove('hidden');
+    content.textContent = 'Running...';
+
+    nodes.forEach(n => n.error = false);
+    renderNodes();
+
+    try {
+        const res = await fetch('/flow/{{ flow.id if flow else 0 }}/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({nodes, connections})
+        });
+        const data = await res.json();
+
+        if (data.node_errors) {
+            Object.keys(data.node_errors).forEach(nid => {
+                const node = nodes.find(n => n.id === nid);
+                if (node) node.error = true;
+            });
+            renderNodes();
+            renderConnections();
+        }
+
+        content.textContent = data.output || data.error || 'No output';
+        showToast(data.success ? 'Test completed' : 'Test failed', data.success ? 'success' : 'error');
+    } catch (e) {
+        content.textContent = 'Error: ' + e.message;
+        showToast('Test failed', 'error');
+    }
+}
+
+async function saveFlow() {
+    const payload = {
+        name: document.getElementById('flowName').value,
+        schedule_type: document.getElementById('scheduleType').value,
+        schedule_config: getScheduleConfig(),
+        enabled: document.getElementById('flowEnabled').checked,
+        nodes: nodes,
+        connections: connections,
+        timeout_seconds: 30,
+        max_retries: 0
+    };
+
+    const url = '{{ url_for("flow_edit", id=flow.id) if flow else url_for("flow_new") }}';
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Flow saved successfully');
+            if (data.id && !{{ flow.id if flow else 'null' }}) {
+                setTimeout(() => window.location.href = `/flow/${data.id}/edit`, 500);
+            }
+        } else {
+            showToast('Failed to save flow', 'error');
+        }
+    } catch (e) {
+        showToast('Error saving flow', 'error');
+    }
+}
+
+function openFunctionModal() {
+    document.getElementById('functionModal').classList.remove('hidden');
+    loadFunctionList();
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.add('hidden');
+}
+
+function addFuncParam() {
+    const container = document.getElementById('funcParams');
+    const row = document.createElement('div');
+    row.className = 'flex gap-2';
+    row.innerHTML = `<input type="text" placeholder="name" class="func-param-name flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                     <select class="func-param-type px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                         <option value="str">str</option><option value="int">int</option><option value="float">float</option>
+                         <option value="bool">bool</option><option value="json">json</option>
+                     </select>
+                     <button onclick="this.parentElement.remove()" class="text-red-600 px-1">&times;</button>`;
+    container.appendChild(row);
+}
+
+async function saveFunction() {
+    const params = [];
+    document.querySelectorAll('#funcParams > div').forEach(row => {
+        const name = row.querySelector('.func-param-name').value;
+        const type = row.querySelector('.func-param-type').value;
+        if (name) params.push({name, type});
+    });
+
+    const payload = {
+        name: document.getElementById('funcName').value,
+        description: document.getElementById('funcDesc').value,
+        code: document.getElementById('funcCode').value,
+        params: params,
+        return_type: document.getElementById('funcReturn').value
+    };
+
+    try {
+        const res = await fetch('/functions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            showToast('Function saved');
+            loadFunctionList();
+            setTimeout(() => location.reload(), 500);
+        }
+    } catch (e) {
+        showToast('Error saving function', 'error');
+    }
+}
+
+async function loadFunctionList() {
+    try {
+        const res = await fetch('/functions');
+        const funcs = await res.json();
+        const container = document.getElementById('functionList');
+        container.innerHTML = funcs.map(f => `
+            <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm">
+                <span class="font-medium text-gray-900 dark:text-white">${f.name}</span>
+                <button onclick="deleteFunction(${f.id})" class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+            </div>
+        `).join('');
+    } catch (e) {}
+}
+
+async function deleteFunction(id) {
+    if (!confirm('Delete this function?')) return;
+    await fetch(`/functions/${id}`, {method: 'DELETE'});
+    loadFunctionList();
+    setTimeout(() => location.reload(), 500);
+}
+
+function openConstantModal() {
+    document.getElementById('constantModal').classList.remove('hidden');
+    loadConstantList();
+}
+
+async function saveConstant() {
+    const payload = {
+        name: document.getElementById('constName').value,
+        value: document.getElementById('constValue').value,
+        type: document.getElementById('constType').value
+    };
+    try {
+        const res = await fetch('/constants', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            showToast('Constant saved');
+            loadConstantList();
+            setTimeout(() => location.reload(), 500);
+        }
+    } catch (e) {
+        showToast('Error saving constant', 'error');
+    }
+}
+
+async function loadConstantList() {
+    try {
+        const res = await fetch('/constants');
+        const consts = await res.json();
+        const container = document.getElementById('constantList');
+        container.innerHTML = consts.map(c => `
+            <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm">
+                <span class="font-medium text-gray-900 dark:text-white">${c.name} = ${c.value}</span>
+                <button onclick="deleteConstant(${c.id})" class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+            </div>
+        `).join('');
+    } catch (e) {}
+}
+
+async function deleteConstant(id) {
+    if (!confirm('Delete this constant?')) return;
+    await fetch(`/constants/${id}`, {method: 'DELETE'});
+    loadConstantList();
+    setTimeout(() => location.reload(), 500);
+}
+
+if (document.documentElement.classList.contains('dark')) {
+    canvas.classList.add('dark-grid');
+}
+
+updateScheduleFields();
+renderNodes();
+renderConnections();
+</script>
+{% endblock %}

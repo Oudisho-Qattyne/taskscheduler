@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if task else 'New' }} Task - Task Scheduler{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ 'Edit' if task else 'New' }} Script Task</h1>
+        <a href="{{ url_for('tasks_list') }}" class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">&larr; Back</a>
+    </div>
+
+    <form method="POST" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Task Name</label>
+                <input type="text" name="name" id="taskName" value="{{ task.name if task else '' }}" required
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tags</label>
+                <input type="text" name="tags" value="{{ task.tags if task else '' }}" placeholder="backup, daily, ..."
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500">
+            </div>
+        </div>
+
+        <!-- Script Source -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Script Source</label>
+            <div class="flex gap-4 mb-3">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="source_type" value="code" id="sourceCode" 
+                        {% if not task or task.script_path and not task.script_path.startswith('/') %}checked{% endif %}
+                        class="w-4 h-4 text-primary-600" onchange="toggleSourceType()">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Write Code</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="source_type" value="existing" id="sourceExisting"
+                        {% if task and task.script_path and task.script_path.startswith('/') %}checked{% endif %}
+                        class="w-4 h-4 text-primary-600" onchange="toggleSourceType()">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Use Existing Script</span>
+                </label>
+            </div>
+
+            <!-- Code Editor -->
+            <div id="codeEditorSection" class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Python Code</label>
+                    <button type="button" onclick="testCode()" class="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded transition">Test Run</button>
+                </div>
+                <textarea id="codeEditor" name="script_code" rows="12" placeholder="# Write your Python script here...
+# Available env vars: TASK_OUTPUT_DIR, TASK_ID, TASK_NAME
+
+import os
+print('Hello from Task Scheduler!')
+print('Output dir:', os.environ.get('TASK_OUTPUT_DIR'))"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm focus:ring-2 focus:ring-primary-500">{{ script_code if script_code else '' }}</textarea>
+
+                <!-- Test Output -->
+                <div id="testOutputSection" class="mt-3 hidden">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Test Output:</span>
+                        <button type="button" onclick="clearTestOutput()" class="text-xs text-gray-400 hover:text-gray-600">Clear</button>
+                    </div>
+                    <div id="testOutputContent" class="bg-gray-100 dark:bg-gray-900 p-3 rounded-lg text-xs font-mono text-gray-800 dark:text-gray-200 overflow-auto max-h-48 whitespace-pre-wrap"></div>
+                </div>
+            </div>
+
+            <!-- Existing Script Selector -->
+            <div id="existingScriptSection" class="hidden">
+                <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Select Script</label>
+                <select name="existing_script" id="existingScriptSelect" 
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500">
+                    <option value="">-- Select a script --</option>
+                </select>
+                <p class="text-xs text-gray-400 mt-1">Scripts are loaded from the scripts/ directory</p>
+            </div>
+        </div>
+
+        <!-- Schedule -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Schedule</label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                {% set types = ['once', 'interval', 'daily', 'weekly', 'monthly', 'monthly_weekday'] %}
+                {% for st in types %}
+                <label class="cursor-pointer">
+                    <input type="radio" name="schedule_type" value="{{ st }}" {% if task and task.schedule_type == st %}checked{% elif not task and st == 'once' %}checked{% endif %} 
+                        class="sr-only schedule-type-radio" onchange="updateScheduleFields()">
+                    <div class="schedule-type-card px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-center text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                        {{ st|replace('_', ' ')|title }}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+            <div id="scheduleFields" class="mt-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+                <!-- Dynamic fields inserted by JS -->
+            </div>
+            <input type="hidden" name="schedule_config" id="scheduleConfig" value='{{ task.schedule_config if task else "{}" }}'>
+        </div>
+
+        <!-- Execution Settings -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timeout (seconds)</label>
+                <input type="number" name="timeout_seconds" value="{{ task.timeout_seconds if task else 30 }}" min="1"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Retries</label>
+                <input type="number" name="max_retries" value="{{ task.max_retries if task else 0 }}" min="0"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Max Instances</label>
+                <input type="number" name="max_instances" value="{{ task.max_instances if task else 1 }}" min="1"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500">
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CLI Arguments</label>
+            <input type="text" name="cli_args" value="{{ task.cli_args if task else '' }}" placeholder="--flag value --option"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500">
+        </div>
+
+        <!-- Environment Variables -->
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Environment Variables</label>
+                <button type="button" onclick="addEnvRow()" class="text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400">+ Add</button>
+            </div>
+            <div id="envVarsContainer" class="space-y-2">
+                {% if task %}
+                    {% for key, val in task.get_env_vars().items() %}
+                    <div class="flex gap-2 env-row">
+                        <input type="text" name="env_key[]" value="{{ key }}" placeholder="KEY" class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                        <input type="text" name="env_val[]" value="{{ val }}" placeholder="value" class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                        <button type="button" onclick="this.parentElement.remove()" class="text-red-600 hover:text-red-800 px-2">&times;</button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <input type="checkbox" name="enabled" id="enabled" {% if not task or task.enabled %}checked{% endif %} class="w-4 h-4 text-primary-600 rounded">
+            <label for="enabled" class="text-sm font-medium text-gray-700 dark:text-gray-300">Enabled</label>
+        </div>
+
+        <div class="flex gap-3 pt-4">
+            <button type="submit" class="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg font-medium transition">Save Task</button>
+            <a href="{{ url_for('tasks_list') }}" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-6 py-2 rounded-lg font-medium transition">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+const scheduleConfigs = {{ task.get_schedule_config()|tojson if task else '{}' }};
+
+function toggleSourceType() {
+    const isCode = document.getElementById('sourceCode').checked;
+    document.getElementById('codeEditorSection').classList.toggle('hidden', !isCode);
+    document.getElementById('existingScriptSection').classList.toggle('hidden', isCode);
+    if (!isCode) loadScripts();
+}
+
+async function loadScripts() {
+    const select = document.getElementById('existingScriptSelect');
+    if (select.options.length > 1) return; // Already loaded
+    try {
+        const res = await fetch('/scripts');
+        const scripts = await res.json();
+        const current = '{{ task.script_path if task else '' }}';
+        select.innerHTML = '<option value="">-- Select a script --</option>';
+        scripts.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            if (s === current || current.endsWith(s)) opt.selected = true;
+            select.appendChild(opt);
+        });
+    } catch (e) {
+        console.error('Failed to load scripts', e);
+    }
+}
+
+function updateScheduleFields() {
+    const type = document.querySelector('input[name="schedule_type"]:checked').value;
+    const container = document.getElementById('scheduleFields');
+    const config = scheduleConfigs || {};
+
+    let html = '';
+    switch(type) {
+        case 'once':
+            html = `<label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Run Date/Time</label>
+                    <input type="datetime-local" id="sched_datetime" value="${config.datetime || ''}"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            break;
+        case 'interval':
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Value</label>
+                            <input type="number" id="sched_value" value="${config.value || 1}" min="1" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Unit</label>
+                            <select id="sched_unit" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="minutes" ${config.unit === 'minutes' ? 'selected' : ''}>Minutes</option>
+                                <option value="hours" ${config.unit === 'hours' ? 'selected' : ''}>Hours</option>
+                                <option value="days" ${config.unit === 'days' ? 'selected' : ''}>Days</option>
+                            </select>
+                        </div>
+                    </div>`;
+            break;
+        case 'daily':
+            html = `<label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Time</label>
+                    <input type="time" id="sched_time" value="${config.time || '00:00'}"
+                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            break;
+        case 'weekly':
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Day</label>
+                            <select id="sched_day" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="mon" ${config.day === 'mon' ? 'selected' : ''}>Monday</option>
+                                <option value="tue" ${config.day === 'tue' ? 'selected' : ''}>Tuesday</option>
+                                <option value="wed" ${config.day === 'wed' ? 'selected' : ''}>Wednesday</option>
+                                <option value="thu" ${config.day === 'thu' ? 'selected' : ''}>Thursday</option>
+                                <option value="fri" ${config.day === 'fri' ? 'selected' : ''}>Friday</option>
+                                <option value="sat" ${config.day === 'sat' ? 'selected' : ''}>Saturday</option>
+                                <option value="sun" ${config.day === 'sun' ? 'selected' : ''}>Sunday</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Time</label>
+                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        </div>
+                    </div>`;
+            break;
+        case 'monthly':
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Day of Month (1-31)</label>
+                            <input type="number" id="sched_day" value="${config.day || 1}" min="1" max="31" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Time</label>
+                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        </div>
+                    </div>`;
+            break;
+        case 'monthly_weekday':
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Ordinal</label>
+                            <select id="sched_ordinal" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="1st" ${config.ordinal === '1st' ? 'selected' : ''}>1st</option>
+                                <option value="2nd" ${config.ordinal === '2nd' ? 'selected' : ''}>2nd</option>
+                                <option value="3rd" ${config.ordinal === '3rd' ? 'selected' : ''}>3rd</option>
+                                <option value="4th" ${config.ordinal === '4th' ? 'selected' : ''}>4th</option>
+                                <option value="last" ${config.ordinal === 'last' ? 'selected' : ''}>Last</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Weekday</label>
+                            <select id="sched_weekday" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="mon" ${config.weekday === 'mon' ? 'selected' : ''}>Monday</option>
+                                <option value="tue" ${config.weekday === 'tue' ? 'selected' : ''}>Tuesday</option>
+                                <option value="wed" ${config.weekday === 'wed' ? 'selected' : ''}>Wednesday</option>
+                                <option value="thu" ${config.weekday === 'thu' ? 'selected' : ''}>Thursday</option>
+                                <option value="fri" ${config.weekday === 'fri' ? 'selected' : ''}>Friday</option>
+                                <option value="sat" ${config.weekday === 'sat' ? 'selected' : ''}>Saturday</option>
+                                <option value="sun" ${config.weekday === 'sun' ? 'selected' : ''}>Sunday</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm text-gray-600 dark:text-gray-400 mb-1">Time</label>
+                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        </div>
+                    </div>`;
+            break;
+    }
+    container.innerHTML = html;
+    updateScheduleConfig();
+}
+
+function updateScheduleConfig() {
+    const type = document.querySelector('input[name="schedule_type"]:checked').value;
+    const config = {};
+
+    const dt = document.getElementById('sched_datetime');
+    if (dt) config.datetime = dt.value;
+
+    const val = document.getElementById('sched_value');
+    if (val) config.value = parseInt(val.value);
+
+    const unit = document.getElementById('sched_unit');
+    if (unit) config.unit = unit.value;
+
+    const time = document.getElementById('sched_time');
+    if (time) config.time = time.value;
+
+    const day = document.getElementById('sched_day');
+    if (day) config.day = day.value;
+
+    const ordinal = document.getElementById('sched_ordinal');
+    if (ordinal) config.ordinal = ordinal.value;
+
+    const weekday = document.getElementById('sched_weekday');
+    if (weekday) config.weekday = weekday.value;
+
+    document.getElementById('scheduleConfig').value = JSON.stringify(config);
+}
+
+function addEnvRow() {
+    const container = document.getElementById('envVarsContainer');
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 env-row';
+    row.innerHTML = `<input type="text" name="env_key[]" placeholder="KEY" class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                     <input type="text" name="env_val[]" placeholder="value" class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                     <button type="button" onclick="this.parentElement.remove()" class="text-red-600 hover:text-red-800 px-2">&times;</button>`;
+    container.appendChild(row);
+}
+
+async function testCode() {
+    const code = document.getElementById('codeEditor').value;
+    if (!code.trim()) {
+        showToast('Please enter some code', 'error');
+        return;
+    }
+
+    const outputSection = document.getElementById('testOutputSection');
+    const outputContent = document.getElementById('testOutputContent');
+    outputSection.classList.remove('hidden');
+    outputContent.textContent = 'Running...';
+
+    try {
+        const res = await fetch('/test-code', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code, filename: 'test.py'})
+        });
+        const data = await res.json();
+
+        let output = '';
+        if (data.stdout) output += data.stdout;
+        if (data.stderr) output += (output ? '\n' : '') + data.stderr;
+        if (data.error) output += (output ? '\n' : '') + 'ERROR: ' + data.error;
+        if (!output) output = 'No output';
+
+        outputContent.textContent = output;
+        showToast(data.success ? 'Test completed' : 'Test failed', data.success ? 'success' : 'error');
+    } catch (e) {
+        outputContent.textContent = 'Error: ' + e.message;
+        showToast('Test failed: ' + e.message, 'error');
+    }
+}
+
+function clearTestOutput() {
+    document.getElementById('testOutputSection').classList.add('hidden');
+    document.getElementById('testOutputContent').textContent = '';
+}
+
+// Highlight selected schedule type
+document.querySelectorAll('.schedule-type-radio').forEach(radio => {
+    radio.addEventListener('change', function() {
+        document.querySelectorAll('.schedule-type-card').forEach(card => {
+            card.classList.remove('bg-primary-50', 'border-primary-500', 'ring-2', 'ring-primary-500');
+        });
+        this.nextElementSibling.classList.add('bg-primary-50', 'border-primary-500', 'ring-2', 'ring-primary-500');
+        updateScheduleFields();
+    });
+});
+
+// Initialize
+document.getElementById('scheduleFields').addEventListener('change', updateScheduleConfig);
+document.getElementById('scheduleFields').addEventListener('input', updateScheduleConfig);
+updateScheduleFields();
+toggleSourceType();
+
+// Highlight initial selection
+document.querySelectorAll('.schedule-type-radio').forEach(r => {
+    if (r.checked) r.dispatchEvent(new Event('change'));
+});
+</script>
+{% endblock %}
