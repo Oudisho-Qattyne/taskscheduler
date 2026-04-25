@@ -4,77 +4,72 @@
 <div class="max-w-5xl mx-auto space-y-6">
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ flow.name }}</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Visual Flow &bull; Created {{ flow.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+            <h1 class="text-2xl font-bold text-body">{{ flow.name }}</h1>
+            <p class="text-sm text-muted mt-1">Visual Flow &bull; Created {{ flow.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
         </div>
         <div class="flex gap-2">
-            <button onclick="runFlow({{ flow.id }})" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Run Now</button>
-            <a href="{{ url_for('flow_edit', id=flow.id) }}" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition">Edit</a>
-            <a href="{{ url_for('flows_list') }}" class="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 px-4 py-2 text-sm">&larr; Back</a>
+            <button onclick="runFlow({{ flow.id }})" class="btn btn-primary">Run Now</button>
+            <a href="{{ url_for('flow_edit', id=flow.id) }}" class="btn btn-secondary">Edit</a>
+            <a href="{{ url_for('flows_list') }}" class="btn btn-ghost">&larr; Back</a>
         </div>
     </div>
 
-    <!-- Info Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Status</div>
+    <div class="grid grid-2 md-grid-3 gap-4">
+        <div class="card p-4">
+            <div class="text-sm text-muted">Status</div>
             <div class="flex items-center gap-2 mt-1">
-                <span class="w-2.5 h-2.5 rounded-full {{ 'bg-green-500' if flow.enabled else 'bg-gray-400' }}"></span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ 'Enabled' if flow.enabled else 'Disabled' }}</span>
+                <span class="w-2.5 h-2.5 rounded-full {{ 'bg-green' if flow.enabled else 'bg-gray-400' }}"></span>
+                <span class="font-medium text-body">{{ 'Enabled' if flow.enabled else 'Disabled' }}</span>
             </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Schedule</div>
-            <div class="font-medium text-gray-900 dark:text-white mt-1">{{ flow.schedule_type|title }}</div>
-            <div class="text-xs text-gray-500 mt-0.5">{{ flow.get_schedule_config()|tojson }}</div>
+        <div class="card p-4">
+            <div class="text-sm text-muted">Schedule</div>
+            <div class="font-medium text-body mt-1">{{ flow.schedule_type|title }}</div>
+            <div class="text-xs text-muted mt-0-5">{{ flow.get_schedule_config()|tojson }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Nodes</div>
-            <div class="font-medium text-gray-900 dark:text-white mt-1">{{ flow.get_nodes()|length }} nodes, {{ flow.get_connections()|length }} connections</div>
-        </div>
-    </div>
-
-    <!-- Settings -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Configuration</h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div><span class="text-gray-500 dark:text-gray-400">Timeout:</span> <span class="text-gray-900 dark:text-white">{{ flow.timeout_seconds }}s</span></div>
-            <div><span class="text-gray-500 dark:text-gray-400">Max Retries:</span> <span class="text-gray-900 dark:text-white">{{ flow.max_retries }}</span></div>
-            <div><span class="text-gray-500 dark:text-gray-400">Next Run:</span> <span class="text-gray-900 dark:text-white">{{ flow.next_run_time.strftime('%Y-%m-%d %H:%M') if flow.next_run_time else '—' }}</span></div>
+        <div class="card p-4">
+            <div class="text-sm text-muted">Nodes</div>
+            <div class="font-medium text-body mt-1">{{ flow.get_nodes()|length }} nodes, {{ flow.get_connections()|length }} connections</div>
         </div>
     </div>
 
-    <!-- Flow Graph Preview -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Flow Graph</h3>
+    <div class="card p-6">
+        <h3 class="text-lg font-semibold text-body mb-4">Configuration</h3>
+        <div class="grid grid-2 md-grid-4 gap-4 text-sm">
+            <div><span class="text-muted">Timeout:</span> <span class="text-body">{{ flow.timeout_seconds }}s</span></div>
+            <div><span class="text-muted">Max Retries:</span> <span class="text-body">{{ flow.max_retries }}</span></div>
+            <div><span class="text-muted">Next Run:</span> <span class="text-body">{{ flow.next_run_time.strftime('%Y-%m-%d %H:%M') if flow.next_run_time else '—' }}</span></div>
+        </div>
+    </div>
+
+    <div class="card p-6">
+        <h3 class="text-lg font-semibold text-body mb-4">Flow Graph</h3>
         {% set nodes = flow.get_nodes() %}
         {% set conns = flow.get_connections() %}
         {% if nodes %}
         <div class="space-y-2">
             {% for node in nodes %}
-            <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {% if node.type == 'function' %}bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200{% else %}bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200{% endif %}">
-                    {{ node.type|title }}
-                </span>
-                <span class="font-medium text-sm text-gray-900 dark:text-white">{{ node.name }}</span>
+            <div class="flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-900 rounded-lg">
+                <span class="badge {% if node.type == 'function' %}badge-blue{% else %}badge-amber{% endif %}">{{ node.type|title }}</span>
+                <span class="font-medium text-sm text-body">{{ node.name }}</span>
                 {% if node.type == 'function' and node.inputs %}
-                <span class="text-xs text-gray-500">Inputs: {{ node.inputs|tojson }}</span>
+                <span class="text-xs text-muted">Inputs: {{ node.inputs|tojson }}</span>
                 {% endif %}
                 {% set node_errors = flow.get_node_errors() %}
                 {% if node.id in node_errors %}
-                <span class="text-xs text-red-600">{{ node_errors[node.id] }}</span>
+                <span class="text-xs text-red">{{ node_errors[node.id] }}</span>
                 {% endif %}
             </div>
             {% endfor %}
         </div>
         {% if conns %}
         <div class="mt-4">
-            <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Connections</h4>
+            <h4 class="text-sm font-medium text-body mb-2">Connections</h4>
             <div class="space-y-1">
                 {% for conn in conns %}
                 {% set src = nodes|selectattr('id', 'equalto', conn.source)|first %}
                 {% set tgt = nodes|selectattr('id', 'equalto', conn.target)|first %}
-                <div class="text-sm text-gray-600 dark:text-gray-400">
+                <div class="text-sm text-muted">
                     {{ src.name if src else conn.source }} &rarr; {{ tgt.name if tgt else conn.target }} ({{ conn.targetParam }})
                 </div>
                 {% endfor %}
@@ -82,58 +77,42 @@
         </div>
         {% endif %}
         {% else %}
-        <p class="text-gray-400 text-sm">No nodes in this flow.</p>
+        <p class="text-light text-sm">No nodes in this flow.</p>
         {% endif %}
     </div>
 
-    <!-- Last Run Output -->
     {% if flow.last_run_output %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Last Run Output</h3>
+    <div class="card p-6">
+        <h3 class="text-lg font-semibold text-body mb-4">Last Run Output</h3>
         <div class="flex items-center gap-3 mb-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if flow.last_run_status == 'success' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200{% endif %}">
-                {{ flow.last_run_status|title }}
-            </span>
-            <span class="text-sm text-gray-500">{{ flow.last_run_time.strftime('%Y-%m-%d %H:%M:%S') if flow.last_run_time }}</span>
+            <span class="badge {% if flow.last_run_status == 'success' %}badge-green{% else %}badge-red{% endif %}">{{ flow.last_run_status|title }}</span>
+            <span class="text-sm text-muted">{{ flow.last_run_time.strftime('%Y-%m-%d %H:%M:%S') if flow.last_run_time }}</span>
         </div>
-        <pre class="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg text-xs font-mono text-gray-800 dark:text-gray-200 overflow-auto max-h-96">{{ flow.last_run_output }}</pre>
+        <pre class="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg text-xs font-mono text-body overflow-auto max-h-96">{{ flow.last_run_output }}</pre>
     </div>
     {% endif %}
 
-    <!-- Execution History -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Execution History</h3>
+    <div class="card p-6">
+        <h3 class="text-lg font-semibold text-body mb-4">Execution History</h3>
         {% if logs %}
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Time</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Status</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Duration</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Attempt</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Output</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Time</th><th>Status</th><th>Duration</th><th>Attempt</th><th>Output</th></tr></thead>
+                <tbody>
                     {% for log in logs %}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">{{ log.run_time.strftime('%m/%d %H:%M:%S') }}</td>
-                        <td class="px-4 py-2">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {% if log.status == 'success' %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200{% endif %}">
-                                {{ log.status|title }}
-                            </span>
-                        </td>
-                        <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">{{ log.duration_ms }}ms</td>
-                        <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300">#{{ log.attempt_number }}</td>
-                        <td class="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 max-w-md truncate">{{ log.output or '—' }}</td>
+                    <tr>
+                        <td class="text-muted whitespace-nowrap">{{ log.run_time.strftime('%m/%d %H:%M:%S') }}</td>
+                        <td><span class="badge {% if log.status == 'success' %}badge-green{% else %}badge-red{% endif %}">{{ log.status|title }}</span></td>
+                        <td class="text-muted">{{ log.duration_ms }}ms</td>
+                        <td class="text-muted">#{{ log.attempt_number }}</td>
+                        <td class="text-muted max-w-md truncate">{{ log.output or '—' }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
         {% else %}
-        <p class="text-gray-400 text-sm">No execution history yet.</p>
+        <p class="text-light text-sm">No execution history yet.</p>
         {% endif %}
     </div>
 </div>

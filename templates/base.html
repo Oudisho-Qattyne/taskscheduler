@@ -2,61 +2,40 @@
 <html lang="en" class="{% if request.cookies.get('theme') == 'dark' %}dark{% endif %}">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}Task Scheduler{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a' },
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        .toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 9999; }
-        .toast { animation: slideIn 0.3s ease-out; }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
-        .toast.hiding { animation: slideOut 0.3s ease-in forwards; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_head %}{% endblock %}
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+<body class="page">
     {% if session.user_id %}
-    <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-14">
-                <div class="flex items-center space-x-6">
-                    <a href="{{ url_for('dashboard') }}" class="text-xl font-bold text-primary-600 dark:text-primary-400">TaskScheduler</a>
-                    <a href="{{ url_for('dashboard') }}" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-primary-600">Dashboard</a>
-                    <a href="{{ url_for('flows_list') }}" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-primary-600">Flows</a>
-                    <a href="{{ url_for('tasks_list') }}" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-primary-600">Tasks</a>
-                    <a href="{{ url_for('audit_log') }}" class="text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-primary-600">Audit</a>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700" title="Toggle theme">
-                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-                    </button>
-                    <span class="text-sm text-gray-600 dark:text-gray-300">{{ session.username }}</span>
-                    <a href="{{ url_for('logout') }}" class="text-sm font-medium text-red-600 hover:text-red-800">Logout</a>
-                </div>
+    <nav class="navbar">
+        <div class="container flex items-center justify-between h-14">
+            <div class="flex items-center gap-6">
+                <a href="{{ url_for('dashboard') }}" class="nav-brand">TaskScheduler</a>
+                <a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
+                <a href="{{ url_for('flows_list') }}" class="nav-link">Flows</a>
+                <a href="{{ url_for('tasks_list') }}" class="nav-link">Tasks</a>
+                <a href="{{ url_for('audit_log') }}" class="nav-link">Audit</a>
+            </div>
+            <div class="nav-actions">
+                <button onclick="toggleTheme()" class="btn-ghost p-2 rounded-lg" title="Toggle theme">
+                    <svg class="w-5 h-5 hidden dark-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    <svg class="w-5 h-5 dark-hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                </button>
+                <span class="text-sm text-muted">{{ session.username }}</span>
+                <a href="{{ url_for('logout') }}" class="text-sm font-medium text-red">Logout</a>
             </div>
         </div>
     </nav>
     {% endif %}
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <main class="main container">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 <div class="mb-4">
                     {% for category, message in messages %}
-                        <div class="p-4 rounded-lg {% if category == 'error' %}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200{% else %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% endif %}">
+                        <div class="alert {% if category == 'error' %}alert-error{% else %}alert-success{% endif %}">
                             {{ message }}
                         </div>
                     {% endfor %}
@@ -78,9 +57,8 @@
         function showToast(message, type = 'success') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
-            const bgClass = type === 'error' ? 'bg-red-500' : 'bg-green-500';
-            toast.className = `toast ${bgClass} text-white px-4 py-3 rounded-lg shadow-lg mb-2 flex items-center justify-between min-w-[300px]`;
-            toast.innerHTML = `<span>${message}</span><button onclick="this.parentElement.classList.add('hiding');setTimeout(()=>this.parentElement.remove(),300)" class="ml-4 text-white hover:text-gray-200">&times;</button>`;
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `<span>${message}</span><button onclick="this.parentElement.classList.add('hiding');setTimeout(()=>this.parentElement.remove(),300)" class="modal-close" style="font-size:1.2rem">&times;</button>`;
             container.appendChild(toast);
             setTimeout(() => {
                 toast.classList.add('hiding');
@@ -94,7 +72,7 @@
             if (e.key === '/') document.getElementById('searchInput')?.focus();
             if (e.key === 'r') location.reload();
             if (e.key === '?') document.getElementById('helpModal')?.classList.remove('hidden');
-            if (e.key === 'Escape') document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+            if (e.key === 'Escape') document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
         });
     </script>
     {% block extra_js %}{% endblock %}

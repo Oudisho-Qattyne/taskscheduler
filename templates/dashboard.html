@@ -3,113 +3,111 @@
 {% block content %}
 <div class="space-y-6">
     <!-- Metrics -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Total Items</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ total_items }}</div>
+    <div class="grid grid-2 md-grid-3 lg-grid-6 gap-4">
+        <div class="card p-4">
+            <div class="text-sm text-muted">Total Items</div>
+            <div class="text-2xl font-bold text-body">{{ total_items }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Enabled</div>
-            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ enabled_items }}</div>
+        <div class="card p-4">
+            <div class="text-sm text-muted">Enabled</div>
+            <div class="text-2xl font-bold text-green">{{ enabled_items }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Success Rate (24h)</div>
-            <div class="text-2xl font-bold text-primary-600 dark:text-primary-400">{{ success_rate }}%</div>
+        <div class="card p-4">
+            <div class="text-sm text-muted">Success Rate (24h)</div>
+            <div class="text-2xl font-bold text-primary">{{ success_rate }}%</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Executions (24h)</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ executions_24h }}</div>
+        <div class="card p-4">
+            <div class="text-sm text-muted">Executions (24h)</div>
+            <div class="text-2xl font-bold text-body">{{ executions_24h }}</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Avg Duration</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ avg_duration }}ms</div>
+        <div class="card p-4">
+            <div class="text-sm text-muted">Avg Duration</div>
+            <div class="text-2xl font-bold text-body">{{ avg_duration }}ms</div>
         </div>
-        <div class="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-            <div class="text-sm text-gray-500 dark:text-gray-400">Upcoming</div>
-            <div class="text-2xl font-bold text-purple-600 dark:text-purple-400">{{ upcoming_tasks|length + upcoming_flows|length }}</div>
+        <div class="card p-4">
+            <div class="text-sm text-muted">Upcoming</div>
+            <div class="text-2xl font-bold text-purple">{{ upcoming_tasks|length + upcoming_flows|length }}</div>
         </div>
     </div>
 
     <!-- Search & Actions -->
-    <div class="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div class="relative w-full sm:w-96">
+    <div class="flex flex-col sm-flex-row gap-4 items-center justify-between">
+        <div class="relative w-full sm-w-96">
             <input type="text" id="searchInput" placeholder="Search flows and tasks..." 
-                class="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500"
+                class="form-input pl-10"
                 onkeyup="handleSearch(this.value)">
-            <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <svg class="w-5 h-5 text-light absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
         </div>
         <div class="flex gap-2">
-            <a href="{{ url_for('flow_new') }}" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ New Flow</a>
-            <a href="{{ url_for('task_new') }}" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">+ New Task</a>
+            <a href="{{ url_for('flow_new') }}" class="btn btn-primary">+ New Flow</a>
+            <a href="{{ url_for('task_new') }}" class="btn btn-secondary">+ New Task</a>
         </div>
     </div>
 
     <!-- Tabs -->
-    <div class="border-b border-gray-200 dark:border-gray-700">
-        <div class="flex space-x-6">
-            <button onclick="switchTab('all')" id="tab-all" class="tab-btn pb-2 text-sm font-medium text-primary-600 border-b-2 border-primary-600">All</button>
-            <button onclick="switchTab('flows')" id="tab-flows" class="tab-btn pb-2 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent">Flows</button>
-            <button onclick="switchTab('tasks')" id="tab-tasks" class="tab-btn pb-2 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent">Script Tasks</button>
-        </div>
+    <div class="tabs">
+        <button onclick="switchTab('all')" id="tab-all" class="tab active">All</button>
+        <button onclick="switchTab('flows')" id="tab-flows" class="tab">Flows</button>
+        <button onclick="switchTab('tasks')" id="tab-tasks" class="tab">Script Tasks</button>
     </div>
 
     <!-- View Switcher -->
     <div class="flex justify-end gap-2">
-        <button onclick="switchView('list')" id="view-list" class="view-btn px-3 py-1.5 text-sm rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">List</button>
-        <button onclick="switchView('timeline')" id="view-timeline" class="view-btn px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">Timeline</button>
-        <button onclick="switchView('calendar')" id="view-calendar" class="view-btn px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">Calendar</button>
+        <button onclick="switchView('list')" id="view-list" class="btn btn-sm" style="background:var(--bg-primary-100);color:var(--text-primary)">List</button>
+        <button onclick="switchView('timeline')" id="view-timeline" class="btn btn-ghost btn-sm">Timeline</button>
+        <button onclick="switchView('calendar')" id="view-calendar" class="btn btn-ghost btn-sm">Calendar</button>
     </div>
 
     <!-- List View -->
     <div id="view-list-content" class="view-content">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="itemsGrid">
-            {% for flow in flows if flows %}
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 item-card" data-type="flow" data-name="{{ flow.name|lower }}">
+        <div class="grid grid-2 lg-grid-3 gap-4" id="itemsGrid">
+            {% for flow in flows %}
+            <div class="card p-4 item-card" data-type="flow" data-name="{{ flow.name|lower }}">
                 <div class="flex items-start justify-between mb-3">
                     <div>
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Flow</span>
-                        <h3 class="font-semibold text-gray-900 dark:text-white mt-1">{{ flow.name }}</h3>
+                        <span class="badge badge-blue">Flow</span>
+                        <h3 class="font-semibold text-body mt-1">{{ flow.name }}</h3>
                     </div>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {% if flow.enabled %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                    <span class="badge {% if flow.enabled %}badge-green{% else %}badge-gray{% endif %}">
                         {{ 'Enabled' if flow.enabled else 'Disabled' }}
                     </span>
                 </div>
-                <div class="text-sm text-gray-500 dark:text-gray-400 space-y-1 mb-3">
+                <div class="text-sm text-muted space-y-1 mb-3">
                     <div>Schedule: {{ flow.schedule_type|title }}</div>
                     <div>Next: {{ flow.next_run_time.strftime('%Y-%m-%d %H:%M') if flow.next_run_time else 'Not scheduled' }}</div>
-                    <div>Last: <span class="{% if flow.last_run_status == 'success' %}text-green-600{% elif flow.last_run_status == 'failed' %}text-red-600{% else %}text-gray-400{% endif %}">{{ flow.last_run_status|title if flow.last_run_status else 'Never' }}</span></div>
+                    <div>Last: <span class="{% if flow.last_run_status == 'success' %}text-green{% elif flow.last_run_status == 'failed' %}text-red{% else %}text-light{% endif %}">{{ flow.last_run_status|title if flow.last_run_status else 'Never' }}</span></div>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="runFlow({{ flow.id }})" class="text-xs bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded transition">Run Now</button>
-                    <a href="{{ url_for('flow_detail', id=flow.id) }}" class="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded transition">Details</a>
-                    <a href="{{ url_for('flow_edit', id=flow.id) }}" class="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded transition">Edit</a>
-                    <button onclick="toggleFlow({{ flow.id }}, this)" class="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded transition">{{ 'Disable' if flow.enabled else 'Enable' }}</button>
+                <div class="flex gap-2 flex-wrap">
+                    <button onclick="runFlow({{ flow.id }})" class="btn btn-primary btn-sm">Run Now</button>
+                    <a href="{{ url_for('flow_detail', id=flow.id) }}" class="btn btn-secondary btn-sm">Details</a>
+                    <a href="{{ url_for('flow_edit', id=flow.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                    <button onclick="toggleFlow({{ flow.id }}, this)" class="btn btn-secondary btn-sm">{{ 'Disable' if flow.enabled else 'Enable' }}</button>
                 </div>
             </div>
             {% endfor %}
-            {% for task in tasks if tasks %}
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 item-card" data-type="task" data-name="{{ task.name|lower }}">
+            {% for task in tasks %}
+            <div class="card p-4 item-card" data-type="task" data-name="{{ task.name|lower }}">
                 <div class="flex items-start justify-between mb-3">
                     <div>
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Task</span>
-                        <h3 class="font-semibold text-gray-900 dark:text-white mt-1">{{ task.name }}</h3>
+                        <span class="badge badge-purple">Task</span>
+                        <h3 class="font-semibold text-body mt-1">{{ task.name }}</h3>
                     </div>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {% if task.enabled %}bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                    <span class="badge {% if task.enabled %}badge-green{% else %}badge-gray{% endif %}">
                         {{ 'Enabled' if task.enabled else 'Disabled' }}
                     </span>
                 </div>
-                <div class="text-sm text-gray-500 dark:text-gray-400 space-y-1 mb-3">
+                <div class="text-sm text-muted space-y-1 mb-3">
                     <div>Schedule: {{ task.schedule_type|title }}</div>
                     <div>Next: {{ task.next_run_time.strftime('%Y-%m-%d %H:%M') if task.next_run_time else 'Not scheduled' }}</div>
-                    <div>Last: <span class="{% if task.last_run_status == 'success' %}text-green-600{% elif task.last_run_status == 'failed' %}text-red-600{% else %}text-gray-400{% endif %}">{{ task.last_run_status|title if task.last_run_status else 'Never' }}</span></div>
+                    <div>Last: <span class="{% if task.last_run_status == 'success' %}text-green{% elif task.last_run_status == 'failed' %}text-red{% else %}text-light{% endif %}">{{ task.last_run_status|title if task.last_run_status else 'Never' }}</span></div>
                 </div>
-                <div class="flex gap-2">
+                <div class="flex gap-2 flex-wrap">
                     <form method="POST" action="{{ url_for('task_run', id=task.id) }}" class="inline">
-                        <button type="submit" class="text-xs bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded transition">Run Now</button>
+                        <button type="submit" class="btn btn-primary btn-sm">Run Now</button>
                     </form>
-                    <a href="{{ url_for('task_detail', id=task.id) }}" class="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded transition">Details</a>
-                    <a href="{{ url_for('task_edit', id=task.id) }}" class="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded transition">Edit</a>
-                    <button onclick="toggleTask({{ task.id }}, this)" class="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded transition">{{ 'Disable' if task.enabled else 'Enable' }}</button>
+                    <a href="{{ url_for('task_detail', id=task.id) }}" class="btn btn-secondary btn-sm">Details</a>
+                    <a href="{{ url_for('task_edit', id=task.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                    <button onclick="toggleTask({{ task.id }}, this)" class="btn btn-secondary btn-sm">{{ 'Disable' if task.enabled else 'Enable' }}</button>
                 </div>
             </div>
             {% endfor %}
@@ -118,39 +116,39 @@
 
     <!-- Timeline View -->
     <div id="view-timeline-content" class="view-content hidden">
-        <div id="timelineContainer" class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-            <div class="animate-pulse text-gray-500">Loading timeline...</div>
+        <div class="card p-6" id="timelineContainer">
+            <div class="animate-pulse text-muted">Loading timeline...</div>
         </div>
     </div>
 
     <!-- Calendar View -->
     <div id="view-calendar-content" class="view-content hidden">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        <div class="card p-6">
             <div class="flex items-center justify-between mb-4">
-                <button onclick="changeMonth(-1)" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">&larr;</button>
-                <h3 id="calendarMonth" class="text-lg font-semibold text-gray-900 dark:text-white"></h3>
-                <button onclick="changeMonth(1)" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">&rarr;</button>
+                <button onclick="changeMonth(-1)" class="btn btn-ghost">&larr;</button>
+                <h3 id="calendarMonth" class="text-lg font-semibold text-body"></h3>
+                <button onclick="changeMonth(1)" class="btn btn-ghost">&rarr;</button>
             </div>
-            <div class="grid grid-cols-7 gap-1 text-center text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+            <div class="grid grid-7 gap-1 text-center text-sm font-medium text-muted mb-2">
                 <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
             </div>
-            <div id="calendarGrid" class="grid grid-cols-7 gap-1"></div>
+            <div id="calendarGrid" class="grid grid-7 gap-1"></div>
             <div class="flex gap-4 mt-4 text-xs">
-                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span> Flow</div>
-                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-500"></span> Task</div>
-                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500"></span> Both</div>
+                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-primary"></span> Flow</div>
+                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple"></span> Task</div>
+                <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green"></span> Both</div>
             </div>
         </div>
     </div>
 
     <!-- Import/Export -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-        <h3 class="font-semibold text-gray-900 dark:text-white mb-3">Backup & Restore</h3>
-        <div class="flex gap-3">
-            <a href="{{ url_for('export_data') }}" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Export JSON</a>
+    <div class="card p-4">
+        <h3 class="font-semibold text-body mb-3">Backup & Restore</h3>
+        <div class="flex gap-3 flex-wrap">
+            <a href="{{ url_for('export_data') }}" class="btn btn-primary">Export JSON</a>
             <form method="POST" action="{{ url_for('import_data') }}" enctype="multipart/form-data" class="flex items-center gap-2">
-                <input type="file" name="file" accept=".json" required class="text-sm text-gray-600 dark:text-gray-300">
-                <button type="submit" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">Import</button>
+                <input type="file" name="file" accept=".json" required class="text-sm text-muted">
+                <button type="submit" class="btn btn-secondary">Import</button>
             </form>
         </div>
     </div>
@@ -163,24 +161,13 @@ let calendarDate = new Date();
 
 function switchTab(tab) {
     currentTab = tab;
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('text-primary-600', 'border-primary-600');
-        btn.classList.add('text-gray-500', 'border-transparent');
-    });
-    document.getElementById('tab-' + tab).classList.remove('text-gray-500', 'border-transparent');
-    document.getElementById('tab-' + tab).classList.add('text-primary-600', 'border-primary-600');
+    document.querySelectorAll('.tab').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
     filterItems();
 }
 
 function switchView(view) {
     currentView = view;
-    document.querySelectorAll('.view-btn').forEach(btn => {
-        btn.classList.remove('bg-primary-100', 'text-primary-700', 'dark:bg-primary-900', 'dark:text-primary-300');
-        btn.classList.add('text-gray-600', 'hover:bg-gray-100', 'dark:text-gray-300', 'dark:hover:bg-gray-700');
-    });
-    document.getElementById('view-' + view).classList.remove('text-gray-600', 'hover:bg-gray-100', 'dark:text-gray-300', 'dark:hover:bg-gray-700');
-    document.getElementById('view-' + view).classList.add('bg-primary-100', 'text-primary-700', 'dark:bg-primary-900', 'dark:text-primary-300');
-
     document.querySelectorAll('.view-content').forEach(c => c.classList.add('hidden'));
     document.getElementById('view-' + view + '-content').classList.remove('hidden');
 
@@ -231,7 +218,7 @@ async function loadTimeline() {
         const res = await fetch('/timeline-partial');
         container.innerHTML = await res.text();
     } catch (e) {
-        container.innerHTML = '<div class="text-red-500">Failed to load timeline</div>';
+        container.innerHTML = '<div class="text-red">Failed to load timeline</div>';
     }
 }
 
@@ -251,9 +238,7 @@ function renderCalendar() {
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-    // Build day -> items map
     const dayItems = {};
-
     calendarTasks.forEach((dtStr, idx) => {
         const dt = new Date(dtStr);
         if (dt.getFullYear() === year && dt.getMonth() === month) {
@@ -262,7 +247,6 @@ function renderCalendar() {
             dayItems[d].tasks.push(calendarTaskNames[idx]);
         }
     });
-
     calendarFlows.forEach((dtStr, idx) => {
         const dt = new Date(dtStr);
         if (dt.getFullYear() === year && dt.getMonth() === month) {
@@ -273,14 +257,12 @@ function renderCalendar() {
     });
 
     grid.innerHTML = '';
-    for (let i = 0; i < firstDay; i++) {
-        grid.appendChild(document.createElement('div'));
-    }
+    for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement('div'));
 
     const today = new Date();
     for (let day = 1; day <= daysInMonth; day++) {
         const cell = document.createElement('div');
-        cell.className = 'min-h-[80px] p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 relative';
+        cell.className = 'min-h-80 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 relative';
         const isToday = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
 
         let indicators = '';
@@ -288,20 +270,17 @@ function renderCalendar() {
         if (dayItems[day]) {
             const hasTasks = dayItems[day].tasks.length > 0;
             const hasFlows = dayItems[day].flows.length > 0;
-            let color = 'bg-green-500';
-            if (hasTasks && !hasFlows) color = 'bg-purple-500';
-            if (!hasTasks && hasFlows) color = 'bg-blue-500';
-
+            let color = 'bg-green';
+            if (hasTasks && !hasFlows) color = 'bg-purple';
+            if (!hasTasks && hasFlows) color = 'bg-primary';
             indicators = `<div class="absolute top-2 right-2 w-2 h-2 rounded-full ${color}"></div>`;
-
             const items = [];
-            dayItems[day].tasks.forEach(n => items.push(`Task: ${n}`));
-            dayItems[day].flows.forEach(n => items.push(`Flow: ${n}`));
-            tooltip = `title="${items.join('\n')}"`;
+            dayItems[day].tasks.forEach(n => items.push('Task: ' + n));
+            dayItems[day].flows.forEach(n => items.push('Flow: ' + n));
+            cell.title = items.join('\n');
         }
 
-        cell.innerHTML = `<div class="text-sm font-medium ${isToday ? 'text-primary-600' : 'text-gray-700 dark:text-gray-300'}">${day}</div>${indicators}`;
-        if (tooltip) cell.setAttribute('title', tooltip.replace(/title="/,'').replace(/"$/,''));
+        cell.innerHTML = `<div class="text-sm font-medium ${isToday ? 'text-primary' : 'text-body'}">${day}</div>${indicators}`;
         grid.appendChild(cell);
     }
 }
@@ -311,7 +290,6 @@ function changeMonth(delta) {
     renderCalendar();
 }
 
-// Auto-refresh timeline
 setInterval(() => {
     if (currentView === 'timeline') loadTimeline();
 }, 30000);

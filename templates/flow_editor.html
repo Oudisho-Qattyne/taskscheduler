@@ -5,81 +5,21 @@
 #flowCanvas {
     background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
     background-size: 20px 20px;
-    cursor: grab;
-    overflow: hidden;
+    touch-action: none;
 }
-#flowCanvas.dark-grid {
+.dark #flowCanvas {
     background-image: radial-gradient(circle, #475569 1px, transparent 1px);
 }
-#flowCanvas.connecting {
-    cursor: crosshair;
-}
-.node {
-    position: absolute;
-    width: 220px;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-    border: 2px solid transparent;
-    user-select: none;
-    z-index: 10;
-}
-.node.dragging { z-index: 100; }
-.node.error { border-color: #ef4444 !important; }
-.node-header {
-    padding: 8px 12px;
-    border-radius: 6px 6px 0 0;
-    font-weight: 600;
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-.node-function .node-header { background: #dbeafe; color: #1e40af; }
-.dark .node-function .node-header { background: #1e3a8a; color: #bfdbfe; }
-.node-constant .node-header { background: #fef3c7; color: #92400e; }
-.dark .node-constant .node-header { background: #78350f; color: #fde68a; }
-.node-body { padding: 8px 12px; }
-.port {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    cursor: pointer;
-    position: absolute;
-    border: 2px solid white;
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
-}
-.port:hover { transform: scale(1.3); }
-.port-input { background: #22c55e; left: -6px; }
-.port-output { background: #3b82f6; right: -6px; }
-.connection-line {
-    fill: none;
-    stroke: #6b7280;
-    stroke-width: 2;
-    cursor: pointer;
-}
-.connection-line:hover { stroke: #ef4444; stroke-width: 3; }
-.connection-line.selected { stroke: #ef4444; }
-.sidebar-item {
-    cursor: grab;
-    transition: all 0.15s;
-}
-.sidebar-item:hover { transform: translateX(4px); }
-.sidebar-item:active { cursor: grabbing; }
-#outputPanel {
-    transition: transform 0.3s ease;
-}
-#outputPanel.hidden { transform: translateY(100%); }
 </style>
 {% endblock %}
 {% block content %}
-<div class="h-screen flex flex-col -mx-4 -my-6" style="height: calc(100vh - 56px);">
+<div class="fullscreen" style="margin: -1.5rem -1rem;">
     <!-- Toolbar -->
-    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center gap-3 flex-wrap">
+    <div class="toolbar">
         <input type="text" id="flowName" value="{{ flow.name if flow else 'New Flow' }}" 
-            class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-medium w-48 focus:ring-2 focus:ring-primary-500">
+            class="form-input font-medium" style="width:12rem">
 
-        <select id="scheduleType" onchange="updateScheduleFields()" class="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+        <select id="scheduleType" onchange="updateScheduleFields()" class="form-select" style="width:auto">
             <option value="once" {% if flow and flow.schedule_type == 'once' %}selected{% endif %}>Once</option>
             <option value="interval" {% if flow and flow.schedule_type == 'interval' %}selected{% endif %}>Interval</option>
             <option value="daily" {% if flow and flow.schedule_type == 'daily' %}selected{% endif %}>Daily</option>
@@ -91,130 +31,143 @@
         <span id="scheduleFields" class="flex items-center gap-2"></span>
 
         <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" id="flowEnabled" {% if not flow or flow.enabled %}checked{% endif %} class="w-4 h-4 text-primary-600 rounded">
-            <span class="text-gray-700 dark:text-gray-300">Enabled</span>
+            <input type="checkbox" id="flowEnabled" {% if not flow or flow.enabled %}checked{% endif %} class="form-checkbox">
+            <span class="text-body">Enabled</span>
         </label>
 
-        <div class="flex-1"></div>
+        <div class="toolbar-sep"></div>
 
-        <button onclick="openFunctionModal()" class="text-xs bg-blue-100 hover:bg-blue-200 dark:bg-blue-900 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 px-3 py-1.5 rounded transition">+ Function</button>
-        <button onclick="openConstantModal()" class="text-xs bg-amber-100 hover:bg-amber-200 dark:bg-amber-900 dark:hover:bg-amber-800 text-amber-700 dark:text-amber-300 px-3 py-1.5 rounded transition">+ Constant</button>
-        <button onclick="testFlow()" class="text-xs bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300 px-3 py-1.5 rounded transition">Test</button>
-        <button onclick="saveFlow()" class="text-xs bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded font-medium transition">Save</button>
+        <button onclick="openFunctionModal()" class="btn btn-sm" style="background:var(--bg-primary-100);color:var(--text-blue)">+ Function</button>
+        <button onclick="openConstantModal()" class="btn btn-sm" style="background:var(--bg-badge-amber);color:var(--text-amber)">+ Constant</button>
+        <button onclick="testFlow()" class="btn btn-success btn-sm">Test</button>
+        <button onclick="saveFlow()" class="btn btn-primary btn-sm">Save</button>
     </div>
 
     <div class="flex flex-1 overflow-hidden">
         <!-- Sidebar -->
-        <div class="w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-            <div class="flex border-b border-gray-200 dark:border-gray-700">
-                <button onclick="switchSidebarTab('functions')" id="sidebar-tab-functions" class="flex-1 py-2 text-sm font-medium text-primary-600 border-b-2 border-primary-600">Functions</button>
-                <button onclick="switchSidebarTab('constants')" id="sidebar-tab-constants" class="flex-1 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border-b-2 border-transparent">Constants</button>
+        <div class="sidebar">
+            <div class="sidebar-tabs">
+                <button onclick="switchSidebarTab('functions')" id="sidebar-tab-functions" class="sidebar-tab active">Functions</button>
+                <button onclick="switchSidebarTab('constants')" id="sidebar-tab-constants" class="sidebar-tab">Constants</button>
             </div>
 
-            <div id="sidebar-functions" class="flex-1 overflow-y-auto p-2 space-y-1">
+            <div id="sidebar-functions" class="sidebar-content">
                 {% for func in functions %}
-                <div class="sidebar-item bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+                <div class="sidebar-item"
                      draggable="true"
                      data-type="function"
                      data-id="{{ func.id }}"
                      data-name="{{ func.name }}"
                      data-params='{{ func.get_params()|tojson }}'>
-                    <div class="font-medium text-sm text-gray-900 dark:text-white">{{ func.name }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ func.description or 'No description' }}</div>
-                    <div class="text-xs text-gray-400 mt-1">{{ func.get_params()|length }} params</div>
+                    <div class="font-medium text-sm text-body">{{ func.name }}</div>
+                    <div class="text-xs text-muted mt-0-5">{{ func.description or 'No description' }}</div>
+                    <div class="text-xs text-light mt-1">{{ func.get_params()|length }} params</div>
                 </div>
                 {% endfor %}
                 {% if not functions %}
-                <div class="text-sm text-gray-400 text-center py-8">No functions yet. Click + Function to create one.</div>
+                <div class="text-sm text-light text-center py-8">No functions yet. Click + Function to create one.</div>
                 {% endif %}
             </div>
 
-            <div id="sidebar-constants" class="flex-1 overflow-y-auto p-2 space-y-1 hidden">
+            <div id="sidebar-constants" class="sidebar-content hidden">
                 {% for const in constants %}
-                <div class="sidebar-item bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm"
+                <div class="sidebar-item"
                      draggable="true"
                      data-type="constant"
                      data-id="{{ const.id }}"
                      data-name="{{ const.name }}"
                      data-value="{{ const.value }}"
                      data-ctype="{{ const.type }}">
-                    <div class="font-medium text-sm text-gray-900 dark:text-white">{{ const.name }}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ const.value }} ({{ const.type }})</div>
+                    <div class="font-medium text-sm text-body">{{ const.name }}</div>
+                    <div class="text-xs text-muted mt-0-5">{{ const.value }} ({{ const.type }})</div>
                 </div>
                 {% endfor %}
                 {% if not constants %}
-                <div class="text-sm text-gray-400 text-center py-8">No constants yet. Click + Constant to create one.</div>
+                <div class="text-sm text-light text-center py-8">No constants yet. Click + Constant to create one.</div>
                 {% endif %}
             </div>
         </div>
 
         <!-- Canvas -->
-        <div class="flex-1 relative overflow-hidden" id="canvasContainer">
-            <svg id="flowCanvas" class="w-full h-full absolute top-0 left-0">
+        <div class="canvas-container" id="canvasContainer">
+            <svg id="flowCanvas">
                 <defs>
                     <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                         <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280" />
                     </marker>
+                    <marker id="arrowhead-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
+                    </marker>
                 </defs>
-                <g id="connectionsLayer"></g>
-                <g id="nodesLayer"></g>
+                <g id="mainGroup">
+                    <g id="connectionsLayer"></g>
+                    <g id="tempConnectionLayer"></g>
+                    <g id="nodesLayer"></g>
+                </g>
             </svg>
+
+            <!-- Zoom Controls -->
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoomIn()" title="Zoom in">+</button>
+                <div class="zoom-level" id="zoomLevel">100%</div>
+                <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
+                <button class="zoom-btn" onclick="resetZoom()" title="Reset">⟲</button>
+            </div>
         </div>
     </div>
 
     <!-- Output Panel -->
-    <div id="outputPanel" class="absolute bottom-0 right-0 w-96 max-h-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-tl-xl shadow-lg z-50 hidden">
-        <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Test Output</span>
-            <button onclick="document.getElementById('outputPanel').classList.add('hidden')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
+    <div id="outputPanel" class="output-panel hidden">
+        <div class="output-header">
+            <span class="text-sm font-medium text-body">Test Output</span>
+            <button onclick="document.getElementById('outputPanel').classList.add('hidden')" class="modal-close">&times;</button>
         </div>
-        <pre id="outputContent" class="p-4 text-xs font-mono text-gray-800 dark:text-gray-200 overflow-auto max-h-52"></pre>
+        <pre id="outputContent" class="output-body"></pre>
     </div>
 </div>
 
 <!-- Function Modal -->
-<div id="functionModal" class="modal fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-auto mx-4">
-        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Function Library</h3>
-            <button onclick="closeModal('functionModal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
+<div id="functionModal" class="modal-overlay hidden">
+    <div class="modal" style="max-width:42rem">
+        <div class="modal-header">
+            <h3 class="text-lg font-semibold text-body">Function Library</h3>
+            <button onclick="closeModal('functionModal')" class="modal-close">&times;</button>
         </div>
-        <div class="p-4 space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-                <input type="text" id="funcName" placeholder="Function name" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
-                <input type="text" id="funcReturn" placeholder="Return type" value="any" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+        <div class="modal-body space-y-4">
+            <div class="grid grid-2 gap-4">
+                <input type="text" id="funcName" placeholder="Function name" class="form-input">
+                <input type="text" id="funcReturn" placeholder="Return type" value="any" class="form-input">
             </div>
-            <input type="text" id="funcDesc" placeholder="Description" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+            <input type="text" id="funcDesc" placeholder="Description" class="form-input">
             <div>
                 <div class="flex items-center justify-between mb-2">
-                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Parameters</label>
-                    <button onclick="addFuncParam()" class="text-xs text-primary-600 hover:text-primary-800 dark:text-primary-400">+ Add Param</button>
+                    <label class="form-label">Parameters</label>
+                    <button onclick="addFuncParam()" class="text-xs text-primary">+ Add Param</button>
                 </div>
                 <div id="funcParams" class="space-y-2"></div>
             </div>
             <textarea id="funcCode" rows="8" placeholder="def my_function(param1, param2):
-    return param1 + param2"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white font-mono text-sm"></textarea>
+    return param1 + param2" class="form-textarea"></textarea>
             <div class="flex gap-2">
-                <button onclick="saveFunction()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Save Function</button>
-                <button onclick="closeModal('functionModal')" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium">Cancel</button>
+                <button onclick="saveFunction()" class="btn btn-primary">Save Function</button>
+                <button onclick="closeModal('functionModal')" class="btn btn-secondary">Cancel</button>
             </div>
-            <div id="functionList" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2 max-h-48 overflow-y-auto"></div>
+            <div id="functionList" class="border-t pt-4 space-y-2 max-h-48 overflow-y-auto"></div>
         </div>
     </div>
 </div>
 
 <!-- Constant Modal -->
-<div id="constantModal" class="modal fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg mx-4">
-        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Constant Library</h3>
-            <button onclick="closeModal('constantModal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
+<div id="constantModal" class="modal-overlay hidden">
+    <div class="modal" style="max-width:32rem">
+        <div class="modal-header">
+            <h3 class="text-lg font-semibold text-body">Constant Library</h3>
+            <button onclick="closeModal('constantModal')" class="modal-close">&times;</button>
         </div>
-        <div class="p-4 space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-                <input type="text" id="constName" placeholder="Constant name" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
-                <select id="constType" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+        <div class="modal-body space-y-4">
+            <div class="grid grid-2 gap-4">
+                <input type="text" id="constName" placeholder="Constant name" class="form-input">
+                <select id="constType" class="form-select">
                     <option value="str">String</option>
                     <option value="int">Integer</option>
                     <option value="float">Float</option>
@@ -222,12 +175,12 @@
                     <option value="json">JSON</option>
                 </select>
             </div>
-            <input type="text" id="constValue" placeholder="Value" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+            <input type="text" id="constValue" placeholder="Value" class="form-input">
             <div class="flex gap-2">
-                <button onclick="saveConstant()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Save Constant</button>
-                <button onclick="closeModal('constantModal')" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg text-sm font-medium">Cancel</button>
+                <button onclick="saveConstant()" class="btn btn-primary">Save Constant</button>
+                <button onclick="closeModal('constantModal')" class="btn btn-secondary">Cancel</button>
             </div>
-            <div id="constantList" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2 max-h-48 overflow-y-auto"></div>
+            <div id="constantList" class="border-t pt-4 space-y-2 max-h-48 overflow-y-auto"></div>
         </div>
     </div>
 </div>
@@ -240,18 +193,91 @@ let nextConnId = connections.length > 0 ? Math.max(...connections.map(c => parse
 let draggingNode = null;
 let dragOffset = {x: 0, y: 0};
 let connectingFrom = null;
-let connectingParam = null;
 let selectedConnection = null;
 
+// View transform for zoom/pan
+let viewScale = 1;
+let viewPanX = 0;
+let viewPanY = 0;
+let isPanning = false;
+let panStart = {x: 0, y: 0, panX: 0, panY: 0};
+
 const canvas = document.getElementById('flowCanvas');
+const mainGroup = document.getElementById('mainGroup');
 const nodesLayer = document.getElementById('nodesLayer');
 const connectionsLayer = document.getElementById('connectionsLayer');
+const tempLayer = document.getElementById('tempConnectionLayer');
 const container = document.getElementById('canvasContainer');
+
+function updateViewTransform() {
+    mainGroup.setAttribute('transform', `translate(${viewPanX}, ${viewPanY}) scale(${viewScale})`);
+    document.getElementById('zoomLevel').textContent = Math.round(viewScale * 100) + '%';
+}
+
+function screenToWorld(sx, sy) {
+    return {
+        x: (sx - viewPanX) / viewScale,
+        y: (sy - viewPanY) / viewScale
+    };
+}
+
+function getEventPoint(e) {
+    if (e.touches && e.touches.length > 0) {
+        return {x: e.touches[0].clientX, y: e.touches[0].clientY};
+    }
+    if (e.changedTouches && e.changedTouches.length > 0) {
+        return {x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY};
+    }
+    return {x: e.clientX, y: e.clientY};
+}
 
 function getCanvasPoint(e) {
     const rect = canvas.getBoundingClientRect();
-    return {x: e.clientX - rect.left, y: e.clientY - rect.top};
+    const pt = getEventPoint(e);
+    return screenToWorld(pt.x - rect.left, pt.y - rect.top);
 }
+
+function getScreenPoint(e) {
+    const rect = canvas.getBoundingClientRect();
+    const pt = getEventPoint(e);
+    return {x: pt.x - rect.left, y: pt.y - rect.top};
+}
+
+// Zoom
+function zoom(factor, centerX, centerY) {
+    const newScale = Math.max(0.2, Math.min(3, viewScale * factor));
+    viewPanX = centerX - (centerX - viewPanX) * (newScale / viewScale);
+    viewPanY = centerY - (centerY - viewPanY) * (newScale / viewScale);
+    viewScale = newScale;
+    updateViewTransform();
+}
+
+function zoomIn() {
+    const rect = canvas.getBoundingClientRect();
+    zoom(1.2, rect.width / 2, rect.height / 2);
+}
+
+function zoomOut() {
+    const rect = canvas.getBoundingClientRect();
+    zoom(0.8, rect.width / 2, rect.height / 2);
+}
+
+function resetZoom() {
+    viewScale = 1;
+    viewPanX = 0;
+    viewPanY = 0;
+    updateViewTransform();
+}
+
+// Wheel zoom
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    zoom(factor, cx, cy);
+}, {passive: false});
 
 function renderNodes() {
     nodesLayer.innerHTML = '';
@@ -294,7 +320,7 @@ function renderNodes() {
         delBtn.setAttribute('fill', '#9ca3af');
         delBtn.setAttribute('cursor', 'pointer');
         delBtn.setAttribute('font-size', '14');
-        delBtn.textContent = '×';
+        delBtn.textContent = '\u00d7';
         delBtn.onclick = (e) => { e.stopPropagation(); deleteNode(node.id); };
         g.appendChild(delBtn);
 
@@ -307,6 +333,7 @@ function renderNodes() {
         outPort.setAttribute('stroke-width', '2');
         outPort.setAttribute('cursor', 'pointer');
         outPort.onmousedown = (e) => startConnection(e, node.id, null);
+        outPort.ontouchstart = (e) => { e.preventDefault(); startConnection(e, node.id, null); };
         g.appendChild(outPort);
 
         if (node.type === 'function' && node.params) {
@@ -322,6 +349,7 @@ function renderNodes() {
                 inPort.setAttribute('stroke-width', '2');
                 inPort.setAttribute('cursor', 'pointer');
                 inPort.onmouseup = (e) => endConnection(e, node.id, param.name);
+                inPort.ontouchend = (e) => { e.preventDefault(); endConnection(e, node.id, param.name); };
                 g.appendChild(inPort);
 
                 const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -341,7 +369,8 @@ function renderNodes() {
                 input.type = 'text';
                 input.value = node.inputs?.[param.name] || '';
                 input.placeholder = param.type || 'value';
-                input.className = 'w-full px-1.5 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white';
+                input.className = 'form-input';
+                input.style = 'padding:2px 6px;font-size:11px;height:24px;';
                 input.oninput = (e) => {
                     if (!node.inputs) node.inputs = {};
                     node.inputs[param.name] = e.target.value;
@@ -367,14 +396,22 @@ function renderNodes() {
             outPort2.setAttribute('stroke-width', '2');
             outPort2.setAttribute('cursor', 'pointer');
             outPort2.onmousedown = (e) => startConnection(e, node.id, null);
+            outPort2.ontouchstart = (e) => { e.preventDefault(); startConnection(e, node.id, null); };
             g.appendChild(outPort2);
         }
 
-        g.onmousedown = (e) => {
+        // Drag handlers - both mouse and touch
+        const startDrag = (e) => {
             if (e.target.tagName === 'input' || e.target.tagName === 'circle' || e.target.tagName === 'text') return;
             draggingNode = node;
             const pt = getCanvasPoint(e);
             dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
+        };
+        g.onmousedown = startDrag;
+        g.ontouchstart = (e) => {
+            if (e.target.tagName === 'input') return;
+            e.preventDefault();
+            startDrag(e);
         };
 
         nodesLayer.appendChild(g);
@@ -402,9 +439,10 @@ function renderConnections() {
         const tx = tgtNode.x;
         const ty = tgtNode.y + tgtY;
 
-        const cp1x = sx + (tx - sx) * 0.5;
+        const dx = tx - sx;
+        const cp1x = sx + dx * 0.5;
         const cp1y = sy;
-        const cp2x = tx - (tx - sx) * 0.5;
+        const cp2x = tx - dx * 0.5;
         const cp2y = ty;
 
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -428,7 +466,6 @@ function renderConnections() {
 function startConnection(e, nodeId, param) {
     e.stopPropagation();
     connectingFrom = nodeId;
-    connectingParam = param;
     canvas.classList.add('connecting');
 }
 
@@ -442,8 +479,28 @@ function endConnection(e, nodeId, paramName) {
         }
     }
     connectingFrom = null;
-    connectingParam = null;
+    tempLayer.innerHTML = '';
     canvas.classList.remove('connecting');
+}
+
+function updateTempConnection(e) {
+    if (!connectingFrom) return;
+    const srcNode = nodes.find(n => n.id === connectingFrom);
+    if (!srcNode) return;
+
+    const pt = getCanvasPoint(e);
+    const srcY = srcNode.type === 'constant' ? 48 : 16;
+    const sx = srcNode.x + 220;
+    const sy = srcNode.y + srcY;
+
+    const dx = pt.x - sx;
+    const cp1x = sx + dx * 0.5;
+    const cp1y = sy;
+    const cp2x = pt.x - dx * 0.5;
+    const cp2y = pt.y;
+
+    tempLayer.innerHTML = `<path d="M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${pt.x} ${pt.y}" 
+        class="temp-connection" marker-end="url(#arrowhead-blue)"/>`;
 }
 
 function deleteNode(nodeId) {
@@ -453,6 +510,7 @@ function deleteNode(nodeId) {
     renderConnections();
 }
 
+// Mouse handlers
 container.addEventListener('mousemove', (e) => {
     if (draggingNode) {
         const pt = getCanvasPoint(e);
@@ -461,19 +519,112 @@ container.addEventListener('mousemove', (e) => {
         renderNodes();
         renderConnections();
     }
+    if (connectingFrom) {
+        updateTempConnection(e);
+    }
+    if (isPanning) {
+        const pt = getScreenPoint(e);
+        viewPanX = panStart.panX + (pt.x - panStart.x);
+        viewPanY = panStart.panY + (pt.y - panStart.y);
+        updateViewTransform();
+    }
 });
 
-container.addEventListener('mouseup', () => {
+container.addEventListener('mousedown', (e) => {
+    if (e.button === 1) { // Middle click = pan
+        e.preventDefault();
+        isPanning = true;
+        const pt = getScreenPoint(e);
+        panStart = {x: pt.x, y: pt.y, panX: viewPanX, panY: viewPanY};
+        container.classList.add('panning');
+    }
+});
+
+container.addEventListener('mouseup', (e) => {
     draggingNode = null;
-    connectingFrom = null;
-    canvas.classList.remove('connecting');
+    if (connectingFrom && e.button !== 1) {
+        connectingFrom = null;
+        tempLayer.innerHTML = '';
+        canvas.classList.remove('connecting');
+    }
+    if (isPanning) {
+        isPanning = false;
+        container.classList.remove('panning');
+    }
 });
 
-container.addEventListener('click', () => {
-    selectedConnection = null;
-    renderConnections();
+container.addEventListener('click', (e) => {
+    if (e.target === canvas || e.target === container) {
+        selectedConnection = null;
+        renderConnections();
+    }
 });
 
+// Touch handlers
+container.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
+        const nodeEl = target?.closest('.node');
+
+        if (nodeEl) {
+            // Touch on node - let node handler deal with it
+            const nodeId = nodeEl.getAttribute('data-id');
+            const node = nodes.find(n => n.id === nodeId);
+            if (node && !target.closest('circle') && !target.closest('input')) {
+                draggingNode = node;
+                const pt = getCanvasPoint(e);
+                dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
+            }
+        } else if (!connectingFrom) {
+            // Touch on empty canvas = pan
+            isPanning = true;
+            const pt = getScreenPoint(e);
+            panStart = {x: pt.x, y: pt.y, panX: viewPanX, panY: viewPanY};
+        }
+    }
+}, {passive: false});
+
+container.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+        if (draggingNode) {
+            const pt = getCanvasPoint(e);
+            draggingNode.x = Math.max(0, pt.x - dragOffset.x);
+            draggingNode.y = Math.max(0, pt.y - dragOffset.y);
+            renderNodes();
+            renderConnections();
+        }
+        if (connectingFrom) {
+            updateTempConnection(e);
+        }
+        if (isPanning) {
+            const pt = getScreenPoint(e);
+            viewPanX = panStart.panX + (pt.x - panStart.x);
+            viewPanY = panStart.panY + (pt.y - panStart.y);
+            updateViewTransform();
+        }
+    }
+}, {passive: false});
+
+container.addEventListener('touchend', (e) => {
+    draggingNode = null;
+    if (connectingFrom) {
+        // Check if dropped on an input port
+        const touch = e.changedTouches[0];
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (target && target.tagName === 'circle') {
+            // Let the circle's touchend handle it
+        } else {
+            connectingFrom = null;
+            tempLayer.innerHTML = '';
+            canvas.classList.remove('connecting');
+        }
+    }
+    isPanning = false;
+});
+
+// Drop from sidebar
 container.addEventListener('dragover', (e) => e.preventDefault());
 container.addEventListener('drop', (e) => {
     e.preventDefault();
@@ -502,6 +653,7 @@ container.addEventListener('drop', (e) => {
     renderNodes();
 });
 
+// Sidebar drag setup
 document.querySelectorAll('.sidebar-item').forEach(item => {
     item.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('application/json', JSON.stringify({
@@ -518,14 +670,8 @@ document.querySelectorAll('.sidebar-item').forEach(item => {
 function switchSidebarTab(tab) {
     document.getElementById('sidebar-functions').classList.toggle('hidden', tab !== 'functions');
     document.getElementById('sidebar-constants').classList.toggle('hidden', tab !== 'constants');
-    document.getElementById('sidebar-tab-functions').classList.toggle('text-primary-600', tab === 'functions');
-    document.getElementById('sidebar-tab-functions').classList.toggle('border-primary-600', tab === 'functions');
-    document.getElementById('sidebar-tab-functions').classList.toggle('text-gray-500', tab !== 'functions');
-    document.getElementById('sidebar-tab-functions').classList.toggle('border-transparent', tab !== 'functions');
-    document.getElementById('sidebar-tab-constants').classList.toggle('text-primary-600', tab === 'constants');
-    document.getElementById('sidebar-tab-constants').classList.toggle('border-primary-600', tab === 'constants');
-    document.getElementById('sidebar-tab-constants').classList.toggle('text-gray-500', tab !== 'constants');
-    document.getElementById('sidebar-tab-constants').classList.toggle('border-transparent', tab !== 'constants');
+    document.getElementById('sidebar-tab-functions').classList.toggle('active', tab === 'functions');
+    document.getElementById('sidebar-tab-constants').classList.toggle('active', tab === 'constants');
 }
 
 function updateScheduleFields() {
@@ -536,60 +682,96 @@ function updateScheduleFields() {
     let html = '';
     switch(type) {
         case 'once':
-            html = `<input type="datetime-local" id="sched_datetime" value="${config.datetime || ''}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            html = `<label class="text-sm text-muted mb-1 block">Run Date/Time</label>
+                    <input type="datetime-local" id="sched_datetime" value="${config.datetime || ''}" class="form-input">`;
             break;
         case 'interval':
-            html = `<input type="number" id="sched_value" value="${config.value || 1}" min="1" class="w-16 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <select id="sched_unit" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                        <option value="minutes" ${config.unit === 'minutes' ? 'selected' : ''}>min</option>
-                        <option value="hours" ${config.unit === 'hours' ? 'selected' : ''}>hr</option>
-                        <option value="days" ${config.unit === 'days' ? 'selected' : ''}>day</option>
-                    </select>`;
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Value</label>
+                            <input type="number" id="sched_value" value="${config.value || 1}" min="1" class="form-input">
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Unit</label>
+                            <select id="sched_unit" class="form-select">
+                                <option value="minutes" ${config.unit === 'minutes' ? 'selected' : ''}>Minutes</option>
+                                <option value="hours" ${config.unit === 'hours' ? 'selected' : ''}>Hours</option>
+                                <option value="days" ${config.unit === 'days' ? 'selected' : ''}>Days</option>
+                            </select>
+                        </div>
+                    </div>`;
             break;
         case 'daily':
-            html = `<input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            html = `<label class="text-sm text-muted mb-1 block">Time</label>
+                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">`;
             break;
         case 'weekly':
-            html = `<select id="sched_day" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                        <option value="mon" ${config.day === 'mon' ? 'selected' : ''}>Mon</option>
-                        <option value="tue" ${config.day === 'tue' ? 'selected' : ''}>Tue</option>
-                        <option value="wed" ${config.day === 'wed' ? 'selected' : ''}>Wed</option>
-                        <option value="thu" ${config.day === 'thu' ? 'selected' : ''}>Thu</option>
-                        <option value="fri" ${config.day === 'fri' ? 'selected' : ''}>Fri</option>
-                        <option value="sat" ${config.day === 'sat' ? 'selected' : ''}>Sat</option>
-                        <option value="sun" ${config.day === 'sun' ? 'selected' : ''}>Sun</option>
-                    </select>
-                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Day</label>
+                            <select id="sched_day" class="form-select">
+                                <option value="mon" ${config.day === 'mon' ? 'selected' : ''}>Monday</option>
+                                <option value="tue" ${config.day === 'tue' ? 'selected' : ''}>Tuesday</option>
+                                <option value="wed" ${config.day === 'wed' ? 'selected' : ''}>Wednesday</option>
+                                <option value="thu" ${config.day === 'thu' ? 'selected' : ''}>Thursday</option>
+                                <option value="fri" ${config.day === 'fri' ? 'selected' : ''}>Friday</option>
+                                <option value="sat" ${config.day === 'sat' ? 'selected' : ''}>Saturday</option>
+                                <option value="sun" ${config.day === 'sun' ? 'selected' : ''}>Sunday</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Time</label>
+                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">
+                        </div>
+                    </div>`;
             break;
         case 'monthly':
-            html = `<input type="number" id="sched_day" value="${config.day || 1}" min="1" max="31" class="w-14 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Day of Month (1-31)</label>
+                            <input type="number" id="sched_day" value="${config.day || 1}" min="1" max="31" class="form-input">
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Time</label>
+                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">
+                        </div>
+                    </div>`;
             break;
         case 'monthly_weekday':
-            html = `<select id="sched_ordinal" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                        <option value="1st" ${config.ordinal === '1st' ? 'selected' : ''}>1st</option>
-                        <option value="2nd" ${config.ordinal === '2nd' ? 'selected' : ''}>2nd</option>
-                        <option value="3rd" ${config.ordinal === '3rd' ? 'selected' : ''}>3rd</option>
-                        <option value="4th" ${config.ordinal === '4th' ? 'selected' : ''}>4th</option>
-                        <option value="last" ${config.ordinal === 'last' ? 'selected' : ''}>last</option>
-                    </select>
-                    <select id="sched_weekday" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                        <option value="mon" ${config.weekday === 'mon' ? 'selected' : ''}>Mon</option>
-                        <option value="tue" ${config.weekday === 'tue' ? 'selected' : ''}>Tue</option>
-                        <option value="wed" ${config.weekday === 'wed' ? 'selected' : ''}>Wed</option>
-                        <option value="thu" ${config.weekday === 'thu' ? 'selected' : ''}>Thu</option>
-                        <option value="fri" ${config.weekday === 'fri' ? 'selected' : ''}>Fri</option>
-                        <option value="sat" ${config.weekday === 'sat' ? 'selected' : ''}>Sat</option>
-                        <option value="sun" ${config.weekday === 'sun' ? 'selected' : ''}>Sun</option>
-                    </select>
-                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">`;
+            html = `<div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Ordinal</label>
+                            <select id="sched_ordinal" class="form-select">
+                                <option value="1st" ${config.ordinal === '1st' ? 'selected' : ''}>1st</option>
+                                <option value="2nd" ${config.ordinal === '2nd' ? 'selected' : ''}>2nd</option>
+                                <option value="3rd" ${config.ordinal === '3rd' ? 'selected' : ''}>3rd</option>
+                                <option value="4th" ${config.ordinal === '4th' ? 'selected' : ''}>4th</option>
+                                <option value="last" ${config.ordinal === 'last' ? 'selected' : ''}>Last</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Weekday</label>
+                            <select id="sched_weekday" class="form-select">
+                                <option value="mon" ${config.weekday === 'mon' ? 'selected' : ''}>Monday</option>
+                                <option value="tue" ${config.weekday === 'tue' ? 'selected' : ''}>Tuesday</option>
+                                <option value="wed" ${config.weekday === 'wed' ? 'selected' : ''}>Wednesday</option>
+                                <option value="thu" ${config.weekday === 'thu' ? 'selected' : ''}>Thursday</option>
+                                <option value="fri" ${config.weekday === 'fri' ? 'selected' : ''}>Friday</option>
+                                <option value="sat" ${config.weekday === 'sat' ? 'selected' : ''}>Saturday</option>
+                                <option value="sun" ${config.weekday === 'sun' ? 'selected' : ''}>Sunday</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="text-sm text-muted mb-1 block">Time</label>
+                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">
+                        </div>
+                    </div>`;
             break;
     }
     container.innerHTML = html;
 }
 
 function getScheduleConfig() {
-    const type = document.getElementById('scheduleType').value;
     const config = {};
     const dt = document.getElementById('sched_datetime');
     if (dt) config.datetime = dt.value;
@@ -688,12 +870,12 @@ function addFuncParam() {
     const container = document.getElementById('funcParams');
     const row = document.createElement('div');
     row.className = 'flex gap-2';
-    row.innerHTML = `<input type="text" placeholder="name" class="func-param-name flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                     <select class="func-param-type px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+    row.innerHTML = `<input type="text" placeholder="name" class="func-param-name flex-1 form-input" style="padding:4px 8px;font-size:12px">
+                     <select class="func-param-type form-select" style="padding:4px 8px;font-size:12px;width:auto">
                          <option value="str">str</option><option value="int">int</option><option value="float">float</option>
                          <option value="bool">bool</option><option value="json">json</option>
                      </select>
-                     <button onclick="this.parentElement.remove()" class="text-red-600 px-1">&times;</button>`;
+                     <button type="button" onclick="this.parentElement.remove()" class="text-red px-1">&times;</button>`;
     container.appendChild(row);
 }
 
@@ -735,9 +917,9 @@ async function loadFunctionList() {
         const funcs = await res.json();
         const container = document.getElementById('functionList');
         container.innerHTML = funcs.map(f => `
-            <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm">
-                <span class="font-medium text-gray-900 dark:text-white">${f.name}</span>
-                <button onclick="deleteFunction(${f.id})" class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+            <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-900 rounded text-sm">
+                <span class="font-medium text-body">${f.name}</span>
+                <button onclick="deleteFunction(${f.id})" class="text-red text-xs hover:underline">Delete</button>
             </div>
         `).join('');
     } catch (e) {}
@@ -783,9 +965,9 @@ async function loadConstantList() {
         const consts = await res.json();
         const container = document.getElementById('constantList');
         container.innerHTML = consts.map(c => `
-            <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm">
-                <span class="font-medium text-gray-900 dark:text-white">${c.name} = ${c.value}</span>
-                <button onclick="deleteConstant(${c.id})" class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+            <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-900 rounded text-sm">
+                <span class="font-medium text-body">${c.name} = ${c.value}</span>
+                <button onclick="deleteConstant(${c.id})" class="text-red text-xs hover:underline">Delete</button>
             </div>
         `).join('');
     } catch (e) {}
@@ -799,11 +981,12 @@ async function deleteConstant(id) {
 }
 
 if (document.documentElement.classList.contains('dark')) {
-    canvas.classList.add('dark-grid');
+    canvas.classList.add('dark');
 }
 
 updateScheduleFields();
 renderNodes();
 renderConnections();
+updateViewTransform();
 </script>
 {% endblock %}
