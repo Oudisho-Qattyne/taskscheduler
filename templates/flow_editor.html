@@ -10,6 +10,38 @@
 .dark #flowCanvas {
     background-image: radial-gradient(circle, #475569 1px, transparent 1px);
 }
+.trash-zone {
+    position: absolute;
+    bottom: 1rem;
+    right: 1rem;
+    width: 3.5rem;
+    height: 3.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    z-index: 20;
+    transition: all 0.2s;
+    color: var(--text-muted);
+    pointer-events: none;
+    opacity: 0.6;
+}
+.trash-zone.active {
+    border-color: var(--bg-red-500);
+    color: var(--text-red);
+    background: var(--bg-red-100);
+    opacity: 1;
+    transform: scale(1.1);
+}
+.trash-label {
+    font-size: 0.5rem;
+    margin-top: 0.125rem;
+    font-weight: 500;
+}
 </style>
 {% endblock %}
 {% block content %}
@@ -112,6 +144,15 @@
                 <div class="zoom-level" id="zoomLevel">100%</div>
                 <button class="zoom-btn" onclick="zoomOut()" title="Zoom out">−</button>
                 <button class="zoom-btn" onclick="resetZoom()" title="Reset">⟲</button>
+            </div>
+
+            <!-- Trash Zone -->
+            <div id="trashZone" class="trash-zone">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+                <span class="trash-label">Drop to delete</span>
             </div>
         </div>
     </div>
@@ -303,6 +344,52 @@ canvas.addEventListener('wheel', (e) => {
     zoomTo(viewScale * factor, cx, cy);
 }, {passive: false});
 
+// ===== TRASH ZONE =====
+function showTrashZone() {
+    const tz = document.getElementById('trashZone');
+    if (tz) tz.classList.add('active');
+}
+
+function hideTrashZone() {
+    const tz = document.getElementById('trashZone');
+    if (tz) tz.classList.remove('active');
+}
+
+function isOverTrashZone(e) {
+    const tz = document.getElementById('trashZone');
+    if (!tz) return false;
+    const rect = tz.getBoundingClientRect();
+    return e.clientX >= rect.left && e.clientX <= rect.right &&
+           e.clientY >= rect.top && e.clientY <= rect.bottom;
+}
+
+function isOverTrashZoneTouch(e) {
+    const tz = document.getElementById('trashZone');
+    if (!tz) return false;
+    const touch = e.changedTouches[0];
+    const rect = tz.getBoundingClientRect();
+    return touch.clientX >= rect.left && touch.clientX <= rect.right &&
+           touch.clientY >= rect.top && touch.clientY <= rect.bottom;
+}
+
+function updateTrashZone(e) {
+    if (isOverTrashZone(e)) showTrashZone();
+    else hideTrashZone();
+}
+
+function updateTrashZoneTouch(e) {
+    const touch = e.touches[0];
+    const tz = document.getElementById('trashZone');
+    if (!tz) return;
+    const rect = tz.getBoundingClientRect();
+    if (touch.clientX >= rect.left && touch.clientX <= rect.right &&
+        touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+        showTrashZone();
+    } else {
+        hideTrashZone();
+    }
+}
+
 // ===== TOUCH DRAG FROM SIDEBAR =====
 function setupSidebarTouch() {
     document.querySelectorAll('.sidebar-item').forEach(item => {
@@ -491,7 +578,6 @@ function renderNodes() {
         outPort.setAttribute('stroke-width', '2');
         outPort.setAttribute('cursor', 'pointer');
         outPort.onmousedown = (e) => startConnection(e, node.id, null);
-        outPort.ontouchstart = (e) => { e.preventDefault(); e.stopPropagation(); startConnection(e, node.id, null); };
         g.appendChild(outPort);
 
         if (node.type === 'function' && node.params) {
@@ -560,17 +646,11 @@ function renderNodes() {
         const startDrag = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'circle' || e.target.tagName === 'text') return;
             draggingNode = node;
+            showTrashZone();
             const pt = getCanvasPoint(e);
             dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
         };
         g.onmousedown = startDrag;
-        g.ontouchstart = (e) => {
-            if (e.target.tagName === 'INPUT') return;
-            if (e.touches.length !== 1) return;
-            e.preventDefault();
-            e.stopPropagation();
-            startDrag(e);
-        };
 
         nodesLayer.appendChild(g);
     });
@@ -675,6 +755,7 @@ container.addEventListener('mousemove', (e) => {
         draggingNode.y = Math.max(0, pt.y - dragOffset.y);
         renderNodes();
         renderConnections();
+        updateTrashZone(e);
     }
     if (connectingFrom) {
         updateTempConnection(e);
@@ -698,7 +779,13 @@ container.addEventListener('mousedown', (e) => {
 });
 
 container.addEventListener('mouseup', (e) => {
-    draggingNode = null;
+    if (draggingNode) {
+        if (isOverTrashZone(e)) {
+            deleteNode(draggingNode.id);
+        }
+        draggingNode = null;
+        hideTrashZone();
+    }
     if (connectingFrom && e.button !== 1) {
         connectingFrom = null;
         tempLayer.innerHTML = '';
@@ -719,11 +806,10 @@ container.addEventListener('click', (e) => {
 
 // ===== TOUCH HANDLERS =====
 container.addEventListener('touchstart', (e) => {
-    const rect = canvas.getBoundingClientRect();
-
     // Two-finger pinch zoom
     if (e.touches.length === 2) {
         e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
         pinchStartDist = getTouchDistance(e.touches);
         pinchStartScale = viewScale;
         pinchCenter = getTouchCenter(e.touches, rect);
@@ -731,36 +817,44 @@ container.addEventListener('touchstart', (e) => {
     }
 
     if (e.touches.length !== 1) return;
+    e.preventDefault();
 
     const touch = e.touches[0];
-    const target = document.elementFromPoint(touch.clientX, touch.clientY);
-    const nodeEl = target?.closest('.node');
-    const portEl = target?.closest('circle');
+    const target = e.target;
 
+    // Check if touching a port (circle inside SVG)
+    const portEl = target.closest ? target.closest('circle') : null;
     if (portEl) {
-        // Let the port's touch handler deal with it
+        const nodeG = portEl.closest('.node');
+        if (nodeG) {
+            const nodeId = nodeG.getAttribute('data-id');
+            startConnection(e, nodeId, null);
+        }
         return;
     }
 
-    if (nodeEl) {
+    // Check if touching a node (but not input field)
+    const nodeEl = target.closest ? target.closest('.node') : null;
+    if (nodeEl && target.tagName !== 'INPUT') {
         const nodeId = nodeEl.getAttribute('data-id');
         const node = nodes.find(n => n.id === nodeId);
         if (node) {
+            showTrashZone();
             const pt = getCanvasPoint(e);
             draggingNode = node;
             dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
         }
-    } else {
-        // Pan on empty canvas
-        isPanning = true;
-        const pt = getScreenPoint(e);
-        panStart = {x: pt.x, y: pt.y, panX: viewPanX, panY: viewPanY};
+        return;
     }
+
+    // Pan on empty canvas
+    isPanning = true;
+    const pt = getScreenPoint(e);
+    panStart = {x: pt.x, y: pt.y, panX: viewPanX, panY: viewPanY};
 }, {passive: false});
 
 container.addEventListener('touchmove', (e) => {
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
 
     // Pinch zoom
     if (e.touches.length === 2 && pinchStartDist > 0) {
@@ -778,11 +872,11 @@ container.addEventListener('touchmove', (e) => {
         draggingNode.y = Math.max(0, pt.y - dragOffset.y);
         renderNodes();
         renderConnections();
-    }
-    if (connectingFrom) {
+        updateTrashZoneTouch(e);
+    } else if (connectingFrom) {
         updateTempConnection(e);
-    }
-    if (isPanning) {
+        updateTrashZoneTouch(e);
+    } else if (isPanning) {
         const pt = getScreenPoint(e);
         viewPanX = panStart.panX + (pt.x - panStart.x);
         viewPanY = panStart.panY + (pt.y - panStart.y);
@@ -796,12 +890,48 @@ container.addEventListener('touchend', (e) => {
         pinchStartDist = 0;
     }
 
-    draggingNode = null;
+    const touch = e.changedTouches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+
+    if (draggingNode) {
+        if (isOverTrashZoneTouch(e)) {
+            deleteNode(draggingNode.id);
+        }
+        draggingNode = null;
+        hideTrashZone();
+    }
 
     if (connectingFrom) {
-        const touch = e.changedTouches[0];
-        const target = document.elementFromPoint(touch.clientX, touch.clientY);
-        if (!target || target.tagName !== 'circle') {
+        const portEl = target?.closest('circle');
+        if (portEl) {
+            const nodeG = portEl.closest('.node');
+            if (nodeG) {
+                const nodeId = nodeG.getAttribute('data-id');
+                const node = nodes.find(n => n.id === nodeId);
+                if (node && node.type === 'function' && node.params) {
+                    // Find which param port was hit based on cy position
+                    const rect = canvas.getBoundingClientRect();
+                    const worldPt = screenToWorld(touch.clientX - rect.left, touch.clientY - rect.top);
+                    const relY = worldPt.y - node.y;
+                    const pIdx = Math.round((relY - 44) / 32);
+                    if (pIdx >= 0 && pIdx < node.params.length) {
+                        endConnection(e, nodeId, node.params[pIdx].name);
+                    } else {
+                        connectingFrom = null;
+                        tempLayer.innerHTML = '';
+                        canvas.classList.remove('connecting');
+                    }
+                } else {
+                    connectingFrom = null;
+                    tempLayer.innerHTML = '';
+                    canvas.classList.remove('connecting');
+                }
+            } else {
+                connectingFrom = null;
+                tempLayer.innerHTML = '';
+                canvas.classList.remove('connecting');
+            }
+        } else {
             connectingFrom = null;
             tempLayer.innerHTML = '';
             canvas.classList.remove('connecting');
