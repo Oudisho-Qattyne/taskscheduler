@@ -202,6 +202,16 @@ let viewPanY = 0;
 let isPanning = false;
 let panStart = {x: 0, y: 0, panX: 0, panY: 0};
 
+// Touch drag from sidebar
+let touchDragItem = null;
+let touchDragGhost = null;
+let touchDragData = null;
+
+// Pinch zoom
+let pinchStartDist = 0;
+let pinchStartScale = 1;
+let pinchCenter = {x: 0, y: 0};
+
 const canvas = document.getElementById('flowCanvas');
 const mainGroup = document.getElementById('mainGroup');
 const nodesLayer = document.getElementById('nodesLayer');
@@ -211,7 +221,8 @@ const container = document.getElementById('canvasContainer');
 
 function updateViewTransform() {
     mainGroup.setAttribute('transform', `translate(${viewPanX}, ${viewPanY}) scale(${viewScale})`);
-    document.getElementById('zoomLevel').textContent = Math.round(viewScale * 100) + '%';
+    const zl = document.getElementById('zoomLevel');
+    if (zl) zl.textContent = Math.round(viewScale * 100) + '%';
 }
 
 function screenToWorld(sx, sy) {
@@ -243,9 +254,22 @@ function getScreenPoint(e) {
     return {x: pt.x - rect.left, y: pt.y - rect.top};
 }
 
+function getTouchDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getTouchCenter(touches, rect) {
+    return {
+        x: ((touches[0].clientX + touches[1].clientX) / 2) - rect.left,
+        y: ((touches[0].clientY + touches[1].clientY) / 2) - rect.top
+    };
+}
+
 // Zoom
-function zoom(factor, centerX, centerY) {
-    const newScale = Math.max(0.2, Math.min(3, viewScale * factor));
+function zoomTo(newScale, centerX, centerY) {
+    newScale = Math.max(0.2, Math.min(3, newScale));
     viewPanX = centerX - (centerX - viewPanX) * (newScale / viewScale);
     viewPanY = centerY - (centerY - viewPanY) * (newScale / viewScale);
     viewScale = newScale;
@@ -254,12 +278,12 @@ function zoom(factor, centerX, centerY) {
 
 function zoomIn() {
     const rect = canvas.getBoundingClientRect();
-    zoom(1.2, rect.width / 2, rect.height / 2);
+    zoomTo(viewScale * 1.2, rect.width / 2, rect.height / 2);
 }
 
 function zoomOut() {
     const rect = canvas.getBoundingClientRect();
-    zoom(0.8, rect.width / 2, rect.height / 2);
+    zoomTo(viewScale * 0.8, rect.width / 2, rect.height / 2);
 }
 
 function resetZoom() {
@@ -269,15 +293,149 @@ function resetZoom() {
     updateViewTransform();
 }
 
-// Wheel zoom
+// Wheel zoom (desktop)
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    zoom(factor, cx, cy);
+    zoomTo(viewScale * factor, cx, cy);
 }, {passive: false});
+
+// ===== TOUCH DRAG FROM SIDEBAR =====
+function setupSidebarTouch() {
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        // Desktop drag
+        item.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('application/json', JSON.stringify({
+                type: item.dataset.type,
+                id: item.dataset.id,
+                name: item.dataset.name,
+                params: item.dataset.params ? JSON.parse(item.dataset.params) : [],
+                value: item.dataset.value,
+                ctype: item.dataset.ctype
+            }));
+        });
+
+        // Touch drag
+        item.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) return;
+            e.preventDefault();
+
+            touchDragData = {
+                type: item.dataset.type,
+                id: item.dataset.id,
+                name: item.dataset.name,
+                params: item.dataset.params ? JSON.parse(item.dataset.params) : [],
+                value: item.dataset.value,
+                ctype: item.dataset.ctype
+            };
+
+            const touch = e.touches[0];
+            touchDragItem = item;
+
+            // Create ghost element
+            touchDragGhost = document.createElement('div');
+            touchDragGhost.textContent = item.dataset.name;
+            touchDragGhost.style.cssText = `
+                position: fixed;
+                left: ${touch.clientX}px;
+                top: ${touch.clientY}px;
+                transform: translate(-50%, -50%);
+                background: var(--bg-primary-600, #2563eb);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 500;
+                pointer-events: none;
+                z-index: 9999;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                opacity: 0.9;
+            `;
+            document.body.appendChild(touchDragGhost);
+            item.style.opacity = '0.5';
+        }, {passive: false});
+
+        item.addEventListener('touchmove', (e) => {
+            if (!touchDragGhost || e.touches.length !== 1) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            touchDragGhost.style.left = touch.clientX + 'px';
+            touchDragGhost.style.top = touch.clientY + 'px';
+        }, {passive: false});
+
+        item.addEventListener('touchend', (e) => {
+            if (!touchDragGhost) return;
+            e.preventDefault();
+
+            const touch = e.changedTouches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+
+            // Check if dropped on canvas
+            if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height && touchDragData) {
+                const worldPt = screenToWorld(x, y);
+                createNodeFromData(touchDragData, worldPt.x, worldPt.y);
+            }
+
+            // Cleanup
+            touchDragGhost.remove();
+            touchDragGhost = null;
+            touchDragData = null;
+            if (touchDragItem) {
+                touchDragItem.style.opacity = '1';
+                touchDragItem = null;
+            }
+        });
+
+        item.addEventListener('touchcancel', (e) => {
+            if (touchDragGhost) {
+                touchDragGhost.remove();
+                touchDragGhost = null;
+            }
+            touchDragData = null;
+            if (touchDragItem) {
+                touchDragItem.style.opacity = '1';
+                touchDragItem = null;
+            }
+        });
+    });
+}
+
+function createNodeFromData(data, wx, wy) {
+    const node = {
+        id: String(nextNodeId++),
+        type: data.type,
+        x: Math.max(0, wx - 110),
+        y: Math.max(0, wy - 20),
+        name: data.name,
+        inputs: {}
+    };
+
+    if (data.type === 'function') {
+        node.function_id = data.id;
+        node.params = data.params || [];
+    } else {
+        node.constant_id = data.id;
+        node.constant_value = data.value;
+        node.constant_type = data.ctype;
+    }
+
+    nodes.push(node);
+    renderNodes();
+}
+
+// Desktop drop on canvas
+container.addEventListener('dragover', (e) => e.preventDefault());
+container.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const data = JSON.parse(e.dataTransfer.getData('application/json'));
+    const pt = getCanvasPoint(e);
+    createNodeFromData(data, pt.x, pt.y);
+});
 
 function renderNodes() {
     nodesLayer.innerHTML = '';
@@ -333,7 +491,7 @@ function renderNodes() {
         outPort.setAttribute('stroke-width', '2');
         outPort.setAttribute('cursor', 'pointer');
         outPort.onmousedown = (e) => startConnection(e, node.id, null);
-        outPort.ontouchstart = (e) => { e.preventDefault(); startConnection(e, node.id, null); };
+        outPort.ontouchstart = (e) => { e.preventDefault(); e.stopPropagation(); startConnection(e, node.id, null); };
         g.appendChild(outPort);
 
         if (node.type === 'function' && node.params) {
@@ -349,7 +507,7 @@ function renderNodes() {
                 inPort.setAttribute('stroke-width', '2');
                 inPort.setAttribute('cursor', 'pointer');
                 inPort.onmouseup = (e) => endConnection(e, node.id, param.name);
-                inPort.ontouchend = (e) => { e.preventDefault(); endConnection(e, node.id, param.name); };
+                inPort.ontouchend = (e) => { e.preventDefault(); e.stopPropagation(); endConnection(e, node.id, param.name); };
                 g.appendChild(inPort);
 
                 const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -369,8 +527,7 @@ function renderNodes() {
                 input.type = 'text';
                 input.value = node.inputs?.[param.name] || '';
                 input.placeholder = param.type || 'value';
-                input.className = 'form-input';
-                input.style = 'padding:2px 6px;font-size:11px;height:24px;';
+                input.style.cssText = 'width:100%;padding:2px 6px;font-size:11px;height:24px;border:1px solid #d1d5db;border-radius:4px;';
                 input.oninput = (e) => {
                     if (!node.inputs) node.inputs = {};
                     node.inputs[param.name] = e.target.value;
@@ -396,21 +553,22 @@ function renderNodes() {
             outPort2.setAttribute('stroke-width', '2');
             outPort2.setAttribute('cursor', 'pointer');
             outPort2.onmousedown = (e) => startConnection(e, node.id, null);
-            outPort2.ontouchstart = (e) => { e.preventDefault(); startConnection(e, node.id, null); };
+            outPort2.ontouchstart = (e) => { e.preventDefault(); e.stopPropagation(); startConnection(e, node.id, null); };
             g.appendChild(outPort2);
         }
 
-        // Drag handlers - both mouse and touch
         const startDrag = (e) => {
-            if (e.target.tagName === 'input' || e.target.tagName === 'circle' || e.target.tagName === 'text') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'circle' || e.target.tagName === 'text') return;
             draggingNode = node;
             const pt = getCanvasPoint(e);
             dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
         };
         g.onmousedown = startDrag;
         g.ontouchstart = (e) => {
-            if (e.target.tagName === 'input') return;
+            if (e.target.tagName === 'INPUT') return;
+            if (e.touches.length !== 1) return;
             e.preventDefault();
+            e.stopPropagation();
             startDrag(e);
         };
 
@@ -499,8 +657,7 @@ function updateTempConnection(e) {
     const cp2x = pt.x - dx * 0.5;
     const cp2y = pt.y;
 
-    tempLayer.innerHTML = `<path d="M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${pt.x} ${pt.y}" 
-        class="temp-connection" marker-end="url(#arrowhead-blue)"/>`;
+    tempLayer.innerHTML = `<path d="M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${pt.x} ${pt.y}" class="temp-connection" marker-end="url(#arrowhead-blue)"/>`;
 }
 
 function deleteNode(nodeId) {
@@ -510,7 +667,7 @@ function deleteNode(nodeId) {
     renderConnections();
 }
 
-// Mouse handlers
+// ===== MOUSE HANDLERS =====
 container.addEventListener('mousemove', (e) => {
     if (draggingNode) {
         const pt = getCanvasPoint(e);
@@ -531,7 +688,7 @@ container.addEventListener('mousemove', (e) => {
 });
 
 container.addEventListener('mousedown', (e) => {
-    if (e.button === 1) { // Middle click = pan
+    if (e.button === 1) {
         e.preventDefault();
         isPanning = true;
         const pt = getScreenPoint(e);
@@ -560,111 +717,107 @@ container.addEventListener('click', (e) => {
     }
 });
 
-// Touch handlers
+// ===== TOUCH HANDLERS =====
 container.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
-        const touch = e.touches[0];
-        const target = document.elementFromPoint(touch.clientX, touch.clientY);
-        const nodeEl = target?.closest('.node');
+    const rect = canvas.getBoundingClientRect();
 
-        if (nodeEl) {
-            // Touch on node - let node handler deal with it
-            const nodeId = nodeEl.getAttribute('data-id');
-            const node = nodes.find(n => n.id === nodeId);
-            if (node && !target.closest('circle') && !target.closest('input')) {
-                draggingNode = node;
-                const pt = getCanvasPoint(e);
-                dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
-            }
-        } else if (!connectingFrom) {
-            // Touch on empty canvas = pan
-            isPanning = true;
-            const pt = getScreenPoint(e);
-            panStart = {x: pt.x, y: pt.y, panX: viewPanX, panY: viewPanY};
+    // Two-finger pinch zoom
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        pinchStartDist = getTouchDistance(e.touches);
+        pinchStartScale = viewScale;
+        pinchCenter = getTouchCenter(e.touches, rect);
+        return;
+    }
+
+    if (e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+    const nodeEl = target?.closest('.node');
+    const portEl = target?.closest('circle');
+
+    if (portEl) {
+        // Let the port's touch handler deal with it
+        return;
+    }
+
+    if (nodeEl) {
+        const nodeId = nodeEl.getAttribute('data-id');
+        const node = nodes.find(n => n.id === nodeId);
+        if (node) {
+            const pt = getCanvasPoint(e);
+            draggingNode = node;
+            dragOffset = {x: pt.x - node.x, y: pt.y - node.y};
         }
+    } else {
+        // Pan on empty canvas
+        isPanning = true;
+        const pt = getScreenPoint(e);
+        panStart = {x: pt.x, y: pt.y, panX: viewPanX, panY: viewPanY};
     }
 }, {passive: false});
 
 container.addEventListener('touchmove', (e) => {
     e.preventDefault();
-    if (e.touches.length === 1) {
-        if (draggingNode) {
-            const pt = getCanvasPoint(e);
-            draggingNode.x = Math.max(0, pt.x - dragOffset.x);
-            draggingNode.y = Math.max(0, pt.y - dragOffset.y);
-            renderNodes();
-            renderConnections();
-        }
-        if (connectingFrom) {
-            updateTempConnection(e);
-        }
-        if (isPanning) {
-            const pt = getScreenPoint(e);
-            viewPanX = panStart.panX + (pt.x - panStart.x);
-            viewPanY = panStart.panY + (pt.y - panStart.y);
-            updateViewTransform();
-        }
+    const rect = canvas.getBoundingClientRect();
+
+    // Pinch zoom
+    if (e.touches.length === 2 && pinchStartDist > 0) {
+        const dist = getTouchDistance(e.touches);
+        const scale = pinchStartScale * (dist / pinchStartDist);
+        zoomTo(scale, pinchCenter.x, pinchCenter.y);
+        return;
+    }
+
+    if (e.touches.length !== 1) return;
+
+    if (draggingNode) {
+        const pt = getCanvasPoint(e);
+        draggingNode.x = Math.max(0, pt.x - dragOffset.x);
+        draggingNode.y = Math.max(0, pt.y - dragOffset.y);
+        renderNodes();
+        renderConnections();
+    }
+    if (connectingFrom) {
+        updateTempConnection(e);
+    }
+    if (isPanning) {
+        const pt = getScreenPoint(e);
+        viewPanX = panStart.panX + (pt.x - panStart.x);
+        viewPanY = panStart.panY + (pt.y - panStart.y);
+        updateViewTransform();
     }
 }, {passive: false});
 
 container.addEventListener('touchend', (e) => {
+    // Reset pinch
+    if (e.touches.length < 2) {
+        pinchStartDist = 0;
+    }
+
     draggingNode = null;
+
     if (connectingFrom) {
-        // Check if dropped on an input port
         const touch = e.changedTouches[0];
         const target = document.elementFromPoint(touch.clientX, touch.clientY);
-        if (target && target.tagName === 'circle') {
-            // Let the circle's touchend handle it
-        } else {
+        if (!target || target.tagName !== 'circle') {
             connectingFrom = null;
             tempLayer.innerHTML = '';
             canvas.classList.remove('connecting');
         }
     }
+
     isPanning = false;
 });
 
-// Drop from sidebar
-container.addEventListener('dragover', (e) => e.preventDefault());
-container.addEventListener('drop', (e) => {
-    e.preventDefault();
-    const data = JSON.parse(e.dataTransfer.getData('application/json'));
-    const pt = getCanvasPoint(e);
-
-    const node = {
-        id: String(nextNodeId++),
-        type: data.type,
-        x: pt.x - 110,
-        y: pt.y - 20,
-        name: data.name,
-        inputs: {}
-    };
-
-    if (data.type === 'function') {
-        node.function_id = data.id;
-        node.params = data.params || [];
-    } else {
-        node.constant_id = data.id;
-        node.constant_value = data.value;
-        node.constant_type = data.ctype;
-    }
-
-    nodes.push(node);
-    renderNodes();
-});
-
-// Sidebar drag setup
-document.querySelectorAll('.sidebar-item').forEach(item => {
-    item.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('application/json', JSON.stringify({
-            type: item.dataset.type,
-            id: item.dataset.id,
-            name: item.dataset.name,
-            params: item.dataset.params ? JSON.parse(item.dataset.params) : [],
-            value: item.dataset.value,
-            ctype: item.dataset.ctype
-        }));
-    });
+container.addEventListener('touchcancel', (e) => {
+    pinchStartDist = 0;
+    draggingNode = null;
+    connectingFrom = null;
+    tempLayer.innerHTML = '';
+    canvas.classList.remove('connecting');
+    isPanning = false;
 });
 
 function switchSidebarTab(tab) {
@@ -682,90 +835,22 @@ function updateScheduleFields() {
     let html = '';
     switch(type) {
         case 'once':
-            html = `<label class="text-sm text-muted mb-1 block">Run Date/Time</label>
-                    <input type="datetime-local" id="sched_datetime" value="${config.datetime || ''}" class="form-input">`;
+            html = `<label class="text-sm text-muted mb-1 block">Run Date/Time</label><input type="datetime-local" id="sched_datetime" value="${config.datetime || ''}" class="form-input">`;
             break;
         case 'interval':
-            html = `<div class="flex gap-3">
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Value</label>
-                            <input type="number" id="sched_value" value="${config.value || 1}" min="1" class="form-input">
-                        </div>
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Unit</label>
-                            <select id="sched_unit" class="form-select">
-                                <option value="minutes" ${config.unit === 'minutes' ? 'selected' : ''}>Minutes</option>
-                                <option value="hours" ${config.unit === 'hours' ? 'selected' : ''}>Hours</option>
-                                <option value="days" ${config.unit === 'days' ? 'selected' : ''}>Days</option>
-                            </select>
-                        </div>
-                    </div>`;
+            html = `<div class="flex gap-3"><div class="flex-1"><label class="text-sm text-muted mb-1 block">Value</label><input type="number" id="sched_value" value="${config.value || 1}" min="1" class="form-input"></div><div class="flex-1"><label class="text-sm text-muted mb-1 block">Unit</label><select id="sched_unit" class="form-select"><option value="minutes" ${config.unit === 'minutes' ? 'selected' : ''}>Minutes</option><option value="hours" ${config.unit === 'hours' ? 'selected' : ''}>Hours</option><option value="days" ${config.unit === 'days' ? 'selected' : ''}>Days</option></select></div></div>`;
             break;
         case 'daily':
-            html = `<label class="text-sm text-muted mb-1 block">Time</label>
-                    <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">`;
+            html = `<label class="text-sm text-muted mb-1 block">Time</label><input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">`;
             break;
         case 'weekly':
-            html = `<div class="flex gap-3">
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Day</label>
-                            <select id="sched_day" class="form-select">
-                                <option value="mon" ${config.day === 'mon' ? 'selected' : ''}>Monday</option>
-                                <option value="tue" ${config.day === 'tue' ? 'selected' : ''}>Tuesday</option>
-                                <option value="wed" ${config.day === 'wed' ? 'selected' : ''}>Wednesday</option>
-                                <option value="thu" ${config.day === 'thu' ? 'selected' : ''}>Thursday</option>
-                                <option value="fri" ${config.day === 'fri' ? 'selected' : ''}>Friday</option>
-                                <option value="sat" ${config.day === 'sat' ? 'selected' : ''}>Saturday</option>
-                                <option value="sun" ${config.day === 'sun' ? 'selected' : ''}>Sunday</option>
-                            </select>
-                        </div>
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Time</label>
-                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">
-                        </div>
-                    </div>`;
+            html = `<div class="flex gap-3"><div class="flex-1"><label class="text-sm text-muted mb-1 block">Day</label><select id="sched_day" class="form-select"><option value="mon" ${config.day === 'mon' ? 'selected' : ''}>Monday</option><option value="tue" ${config.day === 'tue' ? 'selected' : ''}>Tuesday</option><option value="wed" ${config.day === 'wed' ? 'selected' : ''}>Wednesday</option><option value="thu" ${config.day === 'thu' ? 'selected' : ''}>Thursday</option><option value="fri" ${config.day === 'fri' ? 'selected' : ''}>Friday</option><option value="sat" ${config.day === 'sat' ? 'selected' : ''}>Saturday</option><option value="sun" ${config.day === 'sun' ? 'selected' : ''}>Sunday</option></select></div><div class="flex-1"><label class="text-sm text-muted mb-1 block">Time</label><input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input"></div></div>`;
             break;
         case 'monthly':
-            html = `<div class="flex gap-3">
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Day of Month (1-31)</label>
-                            <input type="number" id="sched_day" value="${config.day || 1}" min="1" max="31" class="form-input">
-                        </div>
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Time</label>
-                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">
-                        </div>
-                    </div>`;
+            html = `<div class="flex gap-3"><div class="flex-1"><label class="text-sm text-muted mb-1 block">Day of Month (1-31)</label><input type="number" id="sched_day" value="${config.day || 1}" min="1" max="31" class="form-input"></div><div class="flex-1"><label class="text-sm text-muted mb-1 block">Time</label><input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input"></div></div>`;
             break;
         case 'monthly_weekday':
-            html = `<div class="flex gap-3">
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Ordinal</label>
-                            <select id="sched_ordinal" class="form-select">
-                                <option value="1st" ${config.ordinal === '1st' ? 'selected' : ''}>1st</option>
-                                <option value="2nd" ${config.ordinal === '2nd' ? 'selected' : ''}>2nd</option>
-                                <option value="3rd" ${config.ordinal === '3rd' ? 'selected' : ''}>3rd</option>
-                                <option value="4th" ${config.ordinal === '4th' ? 'selected' : ''}>4th</option>
-                                <option value="last" ${config.ordinal === 'last' ? 'selected' : ''}>Last</option>
-                            </select>
-                        </div>
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Weekday</label>
-                            <select id="sched_weekday" class="form-select">
-                                <option value="mon" ${config.weekday === 'mon' ? 'selected' : ''}>Monday</option>
-                                <option value="tue" ${config.weekday === 'tue' ? 'selected' : ''}>Tuesday</option>
-                                <option value="wed" ${config.weekday === 'wed' ? 'selected' : ''}>Wednesday</option>
-                                <option value="thu" ${config.weekday === 'thu' ? 'selected' : ''}>Thursday</option>
-                                <option value="fri" ${config.weekday === 'fri' ? 'selected' : ''}>Friday</option>
-                                <option value="sat" ${config.weekday === 'sat' ? 'selected' : ''}>Saturday</option>
-                                <option value="sun" ${config.weekday === 'sun' ? 'selected' : ''}>Sunday</option>
-                            </select>
-                        </div>
-                        <div class="flex-1">
-                            <label class="text-sm text-muted mb-1 block">Time</label>
-                            <input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input">
-                        </div>
-                    </div>`;
+            html = `<div class="flex gap-3"><div class="flex-1"><label class="text-sm text-muted mb-1 block">Ordinal</label><select id="sched_ordinal" class="form-select"><option value="1st" ${config.ordinal === '1st' ? 'selected' : ''}>1st</option><option value="2nd" ${config.ordinal === '2nd' ? 'selected' : ''}>2nd</option><option value="3rd" ${config.ordinal === '3rd' ? 'selected' : ''}>3rd</option><option value="4th" ${config.ordinal === '4th' ? 'selected' : ''}>4th</option><option value="last" ${config.ordinal === 'last' ? 'selected' : ''}>Last</option></select></div><div class="flex-1"><label class="text-sm text-muted mb-1 block">Weekday</label><select id="sched_weekday" class="form-select"><option value="mon" ${config.weekday === 'mon' ? 'selected' : ''}>Monday</option><option value="tue" ${config.weekday === 'tue' ? 'selected' : ''}>Tuesday</option><option value="wed" ${config.weekday === 'wed' ? 'selected' : ''}>Wednesday</option><option value="thu" ${config.weekday === 'thu' ? 'selected' : ''}>Thursday</option><option value="fri" ${config.weekday === 'fri' ? 'selected' : ''}>Friday</option><option value="sat" ${config.weekday === 'sat' ? 'selected' : ''}>Saturday</option><option value="sun" ${config.weekday === 'sun' ? 'selected' : ''}>Sunday</option></select></div><div class="flex-1"><label class="text-sm text-muted mb-1 block">Time</label><input type="time" id="sched_time" value="${config.time || '00:00'}" class="form-input"></div></div>`;
             break;
     }
     container.innerHTML = html;
@@ -870,12 +955,7 @@ function addFuncParam() {
     const container = document.getElementById('funcParams');
     const row = document.createElement('div');
     row.className = 'flex gap-2';
-    row.innerHTML = `<input type="text" placeholder="name" class="func-param-name flex-1 form-input" style="padding:4px 8px;font-size:12px">
-                     <select class="func-param-type form-select" style="padding:4px 8px;font-size:12px;width:auto">
-                         <option value="str">str</option><option value="int">int</option><option value="float">float</option>
-                         <option value="bool">bool</option><option value="json">json</option>
-                     </select>
-                     <button type="button" onclick="this.parentElement.remove()" class="text-red px-1">&times;</button>`;
+    row.innerHTML = `<input type="text" placeholder="name" class="func-param-name flex-1 form-input" style="padding:4px 8px;font-size:12px"><select class="func-param-type form-select" style="padding:4px 8px;font-size:12px;width:auto"><option value="str">str</option><option value="int">int</option><option value="float">float</option><option value="bool">bool</option><option value="json">json</option></select><button type="button" onclick="this.parentElement.remove()" class="text-red px-1">&times;</button>`;
     container.appendChild(row);
 }
 
@@ -980,10 +1060,8 @@ async function deleteConstant(id) {
     setTimeout(() => location.reload(), 500);
 }
 
-if (document.documentElement.classList.contains('dark')) {
-    canvas.classList.add('dark');
-}
-
+// Initialize
+setupSidebarTouch();
 updateScheduleFields();
 renderNodes();
 renderConnections();
