@@ -282,7 +282,7 @@ def execute_task_script(task_id):
 
 
 def execute_flow_graph(flow_id, test_mode=False, test_nodes=None, test_connections=None):
-    """Execute a flow graph with topological sorting."""
+    """Execute a flow graph with topological sorting and control flow support."""
     with app.app_context():
         flow = Flow.query.get(flow_id)
         if not flow:
@@ -294,10 +294,10 @@ def execute_flow_graph(flow_id, test_mode=False, test_nodes=None, test_connectio
         if not nodes:
             return {'success': True, 'output': 'No nodes to execute', 'node_errors': {}}
 
-        # Build adjacency list and in-degree count
         node_map = {n['id']: n for n in nodes}
         in_degree = {n['id']: 0 for n in nodes}
         adj = {n['id']: [] for n in nodes}
+        incoming = {n['id']: [] for n in nodes}
 
         for conn in connections:
             src = conn.get('source')
@@ -305,6 +305,7 @@ def execute_flow_graph(flow_id, test_mode=False, test_nodes=None, test_connectio
             if src in node_map and tgt in node_map:
                 adj[src].append(conn)
                 in_degree[tgt] += 1
+                incoming[tgt].append(conn)
 
         # Topological sort
         queue = deque([nid for nid, deg in in_degree.items() if deg == 0])
@@ -319,19 +320,31 @@ def execute_flow_graph(flow_id, test_mode=False, test_nodes=None, test_connectio
                 if in_degree[tgt] == 0:
                     queue.append(tgt)
 
-        # Check for cycles
         if len(execution_order) != len(nodes):
             return {'success': False, 'error': 'Cycle detected in flow graph', 'node_errors': {}}
 
         # Execute nodes
         node_outputs = {}
         node_errors = {}
+        skipped_nodes = set()
         overall_output = []
 
-        for nid in execution_order:
-            node = node_map[nid]
-            node_type = node.get('type', 'function')
+        def gather_kwargs(node, current_outputs):
+            kwargs = {}
+            nid = node['id']
+            for conn in incoming.get(nid, []):
+                src_id = conn['source']
+                param_name = conn.get('targetParam', 'input')
+                if src_id in current_outputs:
+                    kwargs[param_name] = current_outputs[src_id]
+            for pname, pval in node.get('inputs', {}).items():
+                if pname not in kwargs:
+                    kwargs[pname] = pval
+            return kwargs
 
+        def execute_single_node(node, current_outputs):
+            nid = node['id']
+            node_type = node.get('type', 'function')
             try:
                 if node_type == 'constant':
                     const_id = node.get('constant_id')
@@ -346,59 +359,133 @@ def execute_flow_graph(flow_id, test_mode=False, test_nodes=None, test_connectio
                             val = val.lower() in ('true', '1', 'yes', 'on')
                         elif const.type == 'json':
                             val = json.loads(val)
-                        node_outputs[nid] = val
-                    else:
-                        node_outputs[nid] = None
+                        return val, None
+                    return None, None
 
                 elif node_type == 'function':
                     func_id = node.get('function_id')
                     func = Function.query.get(func_id)
                     if not func:
                         raise ValueError(f"Function {func_id} not found")
-
-                    # Gather kwargs
-                    kwargs = {}
-
-                    # From incoming connections
-                    for conn in connections:
-                        if conn['target'] == nid:
-                            src_id = conn['source']
-                            param_name = conn.get('targetParam', 'input')
-                            if src_id in node_outputs:
-                                kwargs[param_name] = node_outputs[src_id]
-
-                    # From hardcoded inputs
+                    kwargs = gather_kwargs(node, current_outputs)
                     for param in func.get_params():
                         pname = param['name']
-                        if pname not in kwargs and pname in node.get('inputs', {}):
-                            val = node['inputs'][pname]
+                        if pname in kwargs:
                             ptype = param.get('type', 'str')
+                            val = kwargs[pname]
                             if ptype == 'int' and val:
-                                val = int(val)
+                                kwargs[pname] = int(val)
                             elif ptype == 'float' and val:
-                                val = float(val)
+                                kwargs[pname] = float(val)
                             elif ptype == 'bool' and val:
-                                val = val.lower() in ('true', '1', 'yes', 'on')
+                                kwargs[pname] = str(val).lower() in ('true', '1', 'yes', 'on')
                             elif ptype == 'json' and val:
-                                val = json.loads(val)
-                            kwargs[pname] = val
-
-                    # Execute function in restricted namespace
+                                kwargs[pname] = json.loads(val)
                     namespace = SAFE_BUILTINS.copy()
                     exec(func.code, namespace)
                     func_obj = namespace.get(func.name)
                     if not func_obj:
                         raise ValueError(f"Function {func.name} not defined in code")
-
                     result = func_obj(**kwargs)
-                    node_outputs[nid] = result
-                    overall_output.append(f"{func.name}: {result}")
+                    return result, None
+
+                elif node_type == 'condition':
+                    kwargs = gather_kwargs(node, current_outputs)
+                    namespace = SAFE_BUILTINS.copy()
+                    namespace.update(kwargs)
+                    expression = node.get('expression', 'True')
+                    result = eval(expression, namespace)
+                    return bool(result), None
+
+                elif node_type == 'loop':
+                    kwargs = gather_kwargs(node, current_outputs)
+                    items = kwargs.get('items', [])
+                    if isinstance(items, str):
+                        try:
+                            items = json.loads(items)
+                        except:
+                            items = [items]
+                    if not isinstance(items, list):
+                        items = [items]
+
+                    body_roots = [c['target'] for c in connections
+                                 if c['source'] == nid and c.get('sourceParam') == 'body']
+                    body_nodes = set()
+                    bfs = deque(body_roots)
+                    while bfs:
+                        curr = bfs.popleft()
+                        if curr not in body_nodes and curr in node_map:
+                            body_nodes.add(curr)
+                            for c2 in connections:
+                                if c2['source'] == curr:
+                                    bfs.append(c2['target'])
+
+                    if not body_nodes:
+                        return items, None
+
+                    body_order = [n for n in execution_order if n in body_nodes]
+                    all_results = []
+
+                    for item in items:
+                        temp_outputs = current_outputs.copy()
+                        temp_outputs[nid] = item
+
+                        iter_outputs = {}
+                        for body_nid in body_order:
+                            body_node = node_map[body_nid]
+                            out, err = execute_single_node(body_node, temp_outputs)
+                            if err:
+                                return None, err
+                            temp_outputs[body_nid] = out
+                            iter_outputs[body_nid] = out
+
+                        for bn in body_nodes:
+                            has_outgoing = any(c['source'] == bn and c['target'] in body_nodes
+                                              for c in connections)
+                            if not has_outgoing and bn in iter_outputs:
+                                all_results.append(iter_outputs[bn])
+
+                    return all_results, None
 
             except Exception as e:
-                error_msg = f"{type(e).__name__}: {str(e)}"
-                node_errors[nid] = error_msg
+                return None, f"{type(e).__name__}: {str(e)}"
+            return None, None
+
+        for nid in execution_order:
+            if nid in skipped_nodes:
+                continue
+            node = node_map[nid]
+            out, err = execute_single_node(node, node_outputs)
+
+            if err:
+                node_errors[nid] = err
                 node_outputs[nid] = None
-                overall_output.append(f"{node.get('name', nid)}: ERROR - {error_msg}")
+                overall_output.append(f"{node.get('name', nid)}: ERROR - {err}")
+            else:
+                node_outputs[nid] = out
+                if node.get('type') == 'function':
+                    func = Function.query.get(node.get('function_id'))
+                    name = func.name if func else node.get('name', nid)
+                    overall_output.append(f"{name}: {out}")
+                elif node.get('type') == 'condition':
+                    overall_output.append(f"{node.get('name', nid)}: {out}")
+                    inactive = 'false' if out else 'true'
+                    to_skip = set()
+                    bfs = deque([nid])
+                    while bfs:
+                        curr = bfs.popleft()
+                        for conn in connections:
+                            if conn['source'] == curr and conn.get('sourceParam') == inactive:
+                                target = conn['target']
+                                if target not in to_skip:
+                                    to_skip.add(target)
+                                    bfs.append(target)
+                    skipped_nodes.update(to_skip)
+                elif node.get('type') == 'loop':
+                    count = len(out) if isinstance(out, list) else '?'
+                    overall_output.append(f"{node.get('name', nid)}: {count} items")
+                else:
+                    overall_output.append(f"{node.get('name', nid)}: {out}")
 
         output_text = '\n'.join(overall_output) if overall_output else 'Flow executed successfully'
 
@@ -1224,7 +1311,7 @@ def api_flow_detail(id):
         'enabled': flow.enabled,
         'nodes': flow.get_nodes(),
         'connections': flow.get_connections(),
-        'last_run_status': f.last_run_status,
+        'last_run_status': flow.last_run_status,
         'last_run_time': flow.last_run_time.isoformat() if flow.last_run_time else None,
         'next_run_time': flow.next_run_time.isoformat() if flow.next_run_time else None
     })

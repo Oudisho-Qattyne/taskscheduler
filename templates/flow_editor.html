@@ -81,6 +81,7 @@
             <div class="sidebar-tabs">
                 <button onclick="switchSidebarTab('functions')" id="sidebar-tab-functions" class="sidebar-tab active">Functions</button>
                 <button onclick="switchSidebarTab('constants')" id="sidebar-tab-constants" class="sidebar-tab">Constants</button>
+                <button onclick="switchSidebarTab('control')" id="sidebar-tab-control" class="sidebar-tab">Control</button>
             </div>
 
             <div id="sidebar-functions" class="sidebar-content">
@@ -117,6 +118,23 @@
                 {% if not constants %}
                 <div class="text-sm text-light text-center py-8">No constants yet. Click + Constant to create one.</div>
                 {% endif %}
+            </div>
+
+            <div id="sidebar-control" class="sidebar-content hidden">
+                <div class="sidebar-item"
+                     draggable="true"
+                     data-type="condition"
+                     data-name="Condition">
+                    <div class="font-medium text-sm text-body">Condition</div>
+                    <div class="text-xs text-muted mt-0-5">If / Else branch</div>
+                </div>
+                <div class="sidebar-item"
+                     draggable="true"
+                     data-type="loop"
+                     data-name="Loop">
+                    <div class="font-medium text-sm text-body">For Each</div>
+                    <div class="text-xs text-muted mt-0-5">Iterate over items</div>
+                </div>
             </div>
         </div>
 
@@ -234,6 +252,7 @@ let nextConnId = connections.length > 0 ? Math.max(...connections.map(c => parse
 let draggingNode = null;
 let dragOffset = {x: 0, y: 0};
 let connectingFrom = null;
+let connectingFromParam = null;
 let selectedConnection = null;
 
 // View transform for zoom/pan
@@ -252,6 +271,10 @@ let touchDragData = null;
 let pinchStartDist = 0;
 let pinchStartScale = 1;
 let pinchCenter = {x: 0, y: 0};
+
+// Edit tracking
+let editingFunctionId = null;
+let editingConstantId = null;
 
 const canvas = document.getElementById('flowCanvas');
 const mainGroup = document.getElementById('mainGroup');
@@ -505,10 +528,17 @@ function createNodeFromData(data, wx, wy) {
     if (data.type === 'function') {
         node.function_id = data.id;
         node.params = data.params || [];
-    } else {
+    } else if (data.type === 'constant') {
         node.constant_id = data.id;
         node.constant_value = data.value;
         node.constant_type = data.ctype;
+    } else if (data.type === 'condition') {
+        node.expression = 'a == b';
+        node.params = [{name: 'a', type: 'str'}, {name: 'b', type: 'str'}];
+    } else if (data.type === 'loop') {
+        node.loop_type = 'for_each';
+        node.item_name = 'item';
+        node.params = [{name: 'items', type: 'json'}];
     }
 
     nodes.push(node);
@@ -529,10 +559,13 @@ function renderNodes() {
     nodes.forEach(node => {
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
-        g.setAttribute('class', `node ${node.type === 'function' ? 'node-function' : 'node-constant'} ${node.error ? 'error' : ''}`);
+        g.setAttribute('class', `node ${node.type === 'function' ? 'node-function' : node.type === 'constant' ? 'node-constant' : node.type === 'condition' ? 'node-condition' : 'node-loop'} ${node.error ? 'error' : ''}`);
         g.setAttribute('data-id', node.id);
 
-        const nodeHeight = node.type === 'function' ? 60 + (node.params?.length || 0) * 32 : 60;
+        const nodeHeight = node.type === 'function' ? 60 + (node.params?.length || 0) * 32
+                         : node.type === 'condition' ? 80 + (node.params?.length || 0) * 28
+                         : node.type === 'loop' ? 80 + (node.params?.length || 0) * 28
+                         : 60;
 
         const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect.setAttribute('width', '220');
@@ -547,13 +580,21 @@ function renderNodes() {
         header.setAttribute('width', '220');
         header.setAttribute('height', '32');
         header.setAttribute('rx', '8');
-        header.setAttribute('fill', node.type === 'function' ? '#dbeafe' : '#fef3c7');
+        header.setAttribute('fill', node.type === 'function' ? '#dbeafe'
+                                  : node.type === 'constant' ? '#fef3c7'
+                                  : node.type === 'condition' ? '#fee2e2'
+                                  : node.type === 'loop' ? '#f3e8ff'
+                                  : '#dbeafe');
         g.appendChild(header);
 
         const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         title.setAttribute('x', '12');
         title.setAttribute('y', '21');
-        title.setAttribute('fill', node.type === 'function' ? '#1e40af' : '#92400e');
+        title.setAttribute('fill', node.type === 'function' ? '#1e40af'
+                                  : node.type === 'constant' ? '#92400e'
+                                  : node.type === 'condition' ? '#991b1b'
+                                  : node.type === 'loop' ? '#6b21a8'
+                                  : '#1e40af');
         title.setAttribute('font-size', '13');
         title.setAttribute('font-weight', '600');
         title.textContent = node.name;
@@ -577,6 +618,7 @@ function renderNodes() {
         outPort.setAttribute('stroke', 'white');
         outPort.setAttribute('stroke-width', '2');
         outPort.setAttribute('cursor', 'pointer');
+        outPort.setAttribute('data-param', 'output');
         outPort.onmousedown = (e) => startConnection(e, node.id, null);
         g.appendChild(outPort);
 
@@ -613,7 +655,7 @@ function renderNodes() {
                 input.type = 'text';
                 input.value = node.inputs?.[param.name] || '';
                 input.placeholder = param.type || 'value';
-                input.style.cssText = 'width:100%;padding:2px 6px;font-size:11px;height:24px;border:1px solid #d1d5db;border-radius:4px;';
+                input.style.cssText = 'width:100%;padding:2px 6px;font-size:11px;height:24px;border:1px solid #d1d5db;border-radius:4px;background:transparent;';
                 input.oninput = (e) => {
                     if (!node.inputs) node.inputs = {};
                     node.inputs[param.name] = e.target.value;
@@ -638,9 +680,194 @@ function renderNodes() {
             outPort2.setAttribute('stroke', 'white');
             outPort2.setAttribute('stroke-width', '2');
             outPort2.setAttribute('cursor', 'pointer');
+            outPort2.setAttribute('data-param', 'output');
             outPort2.onmousedown = (e) => startConnection(e, node.id, null);
             outPort2.ontouchstart = (e) => { e.preventDefault(); e.stopPropagation(); startConnection(e, node.id, null); };
             g.appendChild(outPort2);
+        } else if (node.type === 'condition') {
+            // Expression input
+            const exprFo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+            exprFo.setAttribute('x', '10');
+            exprFo.setAttribute('y', '36');
+            exprFo.setAttribute('width', '200');
+            exprFo.setAttribute('height', '24');
+            const exprInput = document.createElement('input');
+            exprInput.type = 'text';
+            exprInput.value = node.expression || '';
+            exprInput.placeholder = 'a == b';
+            exprInput.style.cssText = 'width:100%;padding:2px 6px;font-size:11px;height:24px;border:1px solid #d1d5db;border-radius:4px;background:transparent;';
+            exprInput.oninput = (e) => { node.expression = e.target.value; };
+            exprFo.appendChild(exprInput);
+            g.appendChild(exprFo);
+
+            // True output port
+            const truePort = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            truePort.setAttribute('cx', '220');
+            truePort.setAttribute('cy', '28');
+            truePort.setAttribute('r', '6');
+            truePort.setAttribute('fill', '#22c55e');
+            truePort.setAttribute('stroke', 'white');
+            truePort.setAttribute('stroke-width', '2');
+            truePort.setAttribute('cursor', 'pointer');
+            truePort.setAttribute('data-param', 'true');
+            truePort.onmousedown = (e) => startConnection(e, node.id, 'true');
+            g.appendChild(truePort);
+            
+            const trueLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            trueLabel.setAttribute('x', '208');
+            trueLabel.setAttribute('y', '24');
+            trueLabel.setAttribute('fill', '#22c55e');
+            trueLabel.setAttribute('font-size', '9');
+            trueLabel.setAttribute('text-anchor', 'end');
+            trueLabel.textContent = 'T';
+            g.appendChild(trueLabel);
+
+            // False output port
+            const falsePort = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            falsePort.setAttribute('cx', '220');
+            falsePort.setAttribute('cy', '52');
+            falsePort.setAttribute('r', '6');
+            falsePort.setAttribute('fill', '#ef4444');
+            falsePort.setAttribute('stroke', 'white');
+            falsePort.setAttribute('stroke-width', '2');
+            falsePort.setAttribute('cursor', 'pointer');
+            falsePort.setAttribute('data-param', 'false');
+            falsePort.onmousedown = (e) => startConnection(e, node.id, 'false');
+            g.appendChild(falsePort);
+            
+            const falseLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            falseLabel.setAttribute('x', '208');
+            falseLabel.setAttribute('y', '56');
+            falseLabel.setAttribute('fill', '#ef4444');
+            falseLabel.setAttribute('font-size', '9');
+            falseLabel.setAttribute('text-anchor', 'end');
+            falseLabel.textContent = 'F';
+            g.appendChild(falseLabel);
+
+            // Input params
+            if (node.params) {
+                node.params.forEach((param, idx) => {
+                    const y = 80 + idx * 28;
+
+                    const inPort = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    inPort.setAttribute('cx', '0');
+                    inPort.setAttribute('cy', y);
+                    inPort.setAttribute('r', '6');
+                    inPort.setAttribute('fill', '#22c55e');
+                    inPort.setAttribute('stroke', 'white');
+                    inPort.setAttribute('stroke-width', '2');
+                    inPort.setAttribute('cursor', 'pointer');
+                    inPort.onmouseup = (e) => endConnection(e, node.id, param.name);
+                    inPort.ontouchend = (e) => { e.preventDefault(); e.stopPropagation(); endConnection(e, node.id, param.name); };
+                    g.appendChild(inPort);
+
+                    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    label.setAttribute('x', '14');
+                    label.setAttribute('y', y + 4);
+                    label.setAttribute('fill', '#6b7280');
+                    label.setAttribute('font-size', '11');
+                    label.textContent = param.name;
+                    g.appendChild(label);
+
+                    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    fo.setAttribute('x', '80');
+                    fo.setAttribute('y', y - 10);
+                    fo.setAttribute('width', '130');
+                    fo.setAttribute('height', '24');
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = node.inputs?.[param.name] || '';
+                    input.placeholder = param.type || 'value';
+                    input.style.cssText = 'width:100%;padding:2px 6px;font-size:11px;height:24px;border:1px solid #d1d5db;border-radius:4px;background:transparent;';
+                    input.oninput = (e) => {
+                        if (!node.inputs) node.inputs = {};
+                        node.inputs[param.name] = e.target.value;
+                    };
+                    fo.appendChild(input);
+                    g.appendChild(fo);
+                });
+            }
+        } else if (node.type === 'loop') {
+            // Item name input
+            const itemFo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+            itemFo.setAttribute('x', '10');
+            itemFo.setAttribute('y', '36');
+            itemFo.setAttribute('width', '200');
+            itemFo.setAttribute('height', '24');
+            const itemInput = document.createElement('input');
+            itemInput.type = 'text';
+            itemInput.value = node.item_name || 'item';
+            itemInput.placeholder = 'item var';
+            itemInput.style.cssText = 'width:100%;padding:2px 6px;font-size:11px;height:24px;border:1px solid #d1d5db;border-radius:4px;background:transparent;';
+            itemInput.oninput = (e) => { node.item_name = e.target.value; };
+            itemFo.appendChild(itemInput);
+            g.appendChild(itemFo);
+
+            // Body output port
+            const bodyPort = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            bodyPort.setAttribute('cx', '220');
+            bodyPort.setAttribute('cy', '28');
+            bodyPort.setAttribute('r', '6');
+            bodyPort.setAttribute('fill', '#9333ea');
+            bodyPort.setAttribute('stroke', 'white');
+            bodyPort.setAttribute('stroke-width', '2');
+            bodyPort.setAttribute('cursor', 'pointer');
+            bodyPort.setAttribute('data-param', 'body');
+            bodyPort.onmousedown = (e) => startConnection(e, node.id, 'body');
+            g.appendChild(bodyPort);
+            
+            const bodyLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            bodyLabel.setAttribute('x', '208');
+            bodyLabel.setAttribute('y', '24');
+            bodyLabel.setAttribute('fill', '#9333ea');
+            bodyLabel.setAttribute('font-size', '9');
+            bodyLabel.setAttribute('text-anchor', 'end');
+            bodyLabel.textContent = 'body';
+            g.appendChild(bodyLabel);
+
+            // Input params
+            if (node.params) {
+                node.params.forEach((param, idx) => {
+                    const y = 80 + idx * 28;
+
+                    const inPort = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    inPort.setAttribute('cx', '0');
+                    inPort.setAttribute('cy', y);
+                    inPort.setAttribute('r', '6');
+                    inPort.setAttribute('fill', '#22c55e');
+                    inPort.setAttribute('stroke', 'white');
+                    inPort.setAttribute('stroke-width', '2');
+                    inPort.setAttribute('cursor', 'pointer');
+                    inPort.onmouseup = (e) => endConnection(e, node.id, param.name);
+                    inPort.ontouchend = (e) => { e.preventDefault(); e.stopPropagation(); endConnection(e, node.id, param.name); };
+                    g.appendChild(inPort);
+
+                    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    label.setAttribute('x', '14');
+                    label.setAttribute('y', y + 4);
+                    label.setAttribute('fill', '#6b7280');
+                    label.setAttribute('font-size', '11');
+                    label.textContent = param.name;
+                    g.appendChild(label);
+
+                    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    fo.setAttribute('x', '80');
+                    fo.setAttribute('y', y - 10);
+                    fo.setAttribute('width', '130');
+                    fo.setAttribute('height', '24');
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = node.inputs?.[param.name] || '';
+                    input.placeholder = param.type || 'value';
+                    input.style.cssText = 'width:100%;padding:2px 6px;font-size:11px;height:24px;border:1px solid #d1d5db;border-radius:4px;background:transparent;';
+                    input.oninput = (e) => {
+                        if (!node.inputs) node.inputs = {};
+                        node.inputs[param.name] = e.target.value;
+                    };
+                    fo.appendChild(input);
+                    g.appendChild(fo);
+                });
+            }
         }
 
         const startDrag = (e) => {
@@ -665,11 +892,20 @@ function renderConnections() {
 
         let srcY = 16;
         if (srcNode.type === 'constant') srcY = 48;
+        else if (srcNode.type === 'condition') {
+            if (conn.sourceParam === 'true') srcY = 28;
+            else if (conn.sourceParam === 'false') srcY = 52;
+        } else if (srcNode.type === 'loop') {
+            if (conn.sourceParam === 'body') srcY = 28;
+        }
 
         let tgtY = 16;
         if (tgtNode.type === 'function' && tgtNode.params) {
             const pIdx = tgtNode.params.findIndex(p => p.name === conn.targetParam);
             if (pIdx >= 0) tgtY = 44 + pIdx * 32;
+        } else if ((tgtNode.type === 'condition' || tgtNode.type === 'loop') && tgtNode.params) {
+            const pIdx = tgtNode.params.findIndex(p => p.name === conn.targetParam);
+            if (pIdx >= 0) tgtY = 80 + pIdx * 28;
         }
 
         const sx = srcNode.x + 220;
@@ -701,9 +937,10 @@ function renderConnections() {
     });
 }
 
-function startConnection(e, nodeId, param) {
+function startConnection(e, nodeId, sourceParam) {
     e.stopPropagation();
     connectingFrom = nodeId;
+    connectingFromParam = sourceParam || null;
     canvas.classList.add('connecting');
 }
 
@@ -712,11 +949,18 @@ function endConnection(e, nodeId, paramName) {
     if (connectingFrom && connectingFrom !== nodeId) {
         const exists = connections.some(c => c.source === connectingFrom && c.target === nodeId && c.targetParam === paramName);
         if (!exists) {
-            connections.push({id: String(nextConnId++), source: connectingFrom, target: nodeId, targetParam: paramName});
+            connections.push({
+                id: String(nextConnId++), 
+                source: connectingFrom, 
+                target: nodeId, 
+                targetParam: paramName,
+                sourceParam: connectingFromParam || 'output'
+            });
             renderConnections();
         }
     }
     connectingFrom = null;
+    connectingFromParam = null;
     tempLayer.innerHTML = '';
     canvas.classList.remove('connecting');
 }
@@ -727,7 +971,13 @@ function updateTempConnection(e) {
     if (!srcNode) return;
 
     const pt = getCanvasPoint(e);
-    const srcY = srcNode.type === 'constant' ? 48 : 16;
+    let srcY = 16;
+    if (srcNode.type === 'constant') srcY = 48;
+    else if (srcNode.type === 'condition') {
+        srcY = connectingFromParam === 'true' ? 28 : (connectingFromParam === 'false' ? 52 : 16);
+    } else if (srcNode.type === 'loop') {
+        srcY = connectingFromParam === 'body' ? 28 : 16;
+    }
     const sx = srcNode.x + 220;
     const sy = srcNode.y + srcY;
 
@@ -788,6 +1038,7 @@ container.addEventListener('mouseup', (e) => {
     }
     if (connectingFrom && e.button !== 1) {
         connectingFrom = null;
+        connectingFromParam = null;
         tempLayer.innerHTML = '';
         canvas.classList.remove('connecting');
     }
@@ -806,6 +1057,9 @@ container.addEventListener('click', (e) => {
 
 // ===== TOUCH HANDLERS =====
 container.addEventListener('touchstart', (e) => {
+    // Ignore if dragging from sidebar
+    if (touchDragGhost) return;
+
     // Two-finger pinch zoom
     if (e.touches.length === 2) {
         e.preventDefault();
@@ -828,7 +1082,8 @@ container.addEventListener('touchstart', (e) => {
         const nodeG = portEl.closest('.node');
         if (nodeG) {
             const nodeId = nodeG.getAttribute('data-id');
-            startConnection(e, nodeId, null);
+            const sourceParam = portEl.getAttribute('data-param') || null;
+            startConnection(e, nodeId, sourceParam);
         }
         return;
     }
@@ -857,7 +1112,7 @@ container.addEventListener('touchmove', (e) => {
     e.preventDefault();
 
     // Pinch zoom
-    if (e.touches.length === 2 && pinchStartDist > 0) {
+    if (e.touches.length === 2 && pinchStartDist > 0 && !touchDragGhost) {
         const dist = getTouchDistance(e.touches);
         const scale = pinchStartScale * (dist / pinchStartDist);
         zoomTo(scale, pinchCenter.x, pinchCenter.y);
@@ -865,6 +1120,11 @@ container.addEventListener('touchmove', (e) => {
     }
 
     if (e.touches.length !== 1) return;
+
+    if (touchDragGhost) {
+        updateTrashZoneTouch(e);
+        return;
+    }
 
     if (draggingNode) {
         const pt = getCanvasPoint(e);
@@ -908,31 +1168,39 @@ container.addEventListener('touchend', (e) => {
             if (nodeG) {
                 const nodeId = nodeG.getAttribute('data-id');
                 const node = nodes.find(n => n.id === nodeId);
-                if (node && node.type === 'function' && node.params) {
-                    // Find which param port was hit based on cy position
+                if (node && node.params) {
                     const rect = canvas.getBoundingClientRect();
                     const worldPt = screenToWorld(touch.clientX - rect.left, touch.clientY - rect.top);
                     const relY = worldPt.y - node.y;
-                    const pIdx = Math.round((relY - 44) / 32);
+                    let pIdx = -1;
+                    if (node.type === 'function') {
+                        pIdx = Math.round((relY - 44) / 32);
+                    } else if (node.type === 'condition' || node.type === 'loop') {
+                        pIdx = Math.round((relY - 80) / 28);
+                    }
                     if (pIdx >= 0 && pIdx < node.params.length) {
                         endConnection(e, nodeId, node.params[pIdx].name);
                     } else {
                         connectingFrom = null;
+                        connectingFromParam = null;
                         tempLayer.innerHTML = '';
                         canvas.classList.remove('connecting');
                     }
                 } else {
                     connectingFrom = null;
+                    connectingFromParam = null;
                     tempLayer.innerHTML = '';
                     canvas.classList.remove('connecting');
                 }
             } else {
                 connectingFrom = null;
+                connectingFromParam = null;
                 tempLayer.innerHTML = '';
                 canvas.classList.remove('connecting');
             }
         } else {
             connectingFrom = null;
+            connectingFromParam = null;
             tempLayer.innerHTML = '';
             canvas.classList.remove('connecting');
         }
@@ -945,6 +1213,7 @@ container.addEventListener('touchcancel', (e) => {
     pinchStartDist = 0;
     draggingNode = null;
     connectingFrom = null;
+    connectingFromParam = null;
     tempLayer.innerHTML = '';
     canvas.classList.remove('connecting');
     isPanning = false;
@@ -953,8 +1222,10 @@ container.addEventListener('touchcancel', (e) => {
 function switchSidebarTab(tab) {
     document.getElementById('sidebar-functions').classList.toggle('hidden', tab !== 'functions');
     document.getElementById('sidebar-constants').classList.toggle('hidden', tab !== 'constants');
+    document.getElementById('sidebar-control').classList.toggle('hidden', tab !== 'control');
     document.getElementById('sidebar-tab-functions').classList.toggle('active', tab === 'functions');
     document.getElementById('sidebar-tab-constants').classList.toggle('active', tab === 'constants');
+    document.getElementById('sidebar-tab-control').classList.toggle('active', tab === 'control');
 }
 
 function updateScheduleFields() {
@@ -1073,12 +1344,38 @@ async function saveFlow() {
 }
 
 function openFunctionModal() {
+    editingFunctionId = null;
+    document.getElementById('funcName').value = '';
+    document.getElementById('funcDesc').value = '';
+    document.getElementById('funcCode').value = '';
+    document.getElementById('funcReturn').value = 'any';
+    document.getElementById('funcParams').innerHTML = '';
+    const saveBtn = document.querySelector('#functionModal .btn-primary');
+    if (saveBtn) saveBtn.textContent = 'Save Function';
     document.getElementById('functionModal').classList.remove('hidden');
     loadFunctionList();
 }
 
 function closeModal(id) {
     document.getElementById(id).classList.add('hidden');
+    if (id === 'functionModal') {
+        editingFunctionId = null;
+        document.getElementById('funcName').value = '';
+        document.getElementById('funcDesc').value = '';
+        document.getElementById('funcCode').value = '';
+        document.getElementById('funcReturn').value = 'any';
+        document.getElementById('funcParams').innerHTML = '';
+        const saveBtn = document.querySelector('#functionModal .btn-primary');
+        if (saveBtn) saveBtn.textContent = 'Save Function';
+    }
+    if (id === 'constantModal') {
+        editingConstantId = null;
+        document.getElementById('constName').value = '';
+        document.getElementById('constValue').value = '';
+        document.getElementById('constType').value = 'str';
+        const saveBtn = document.querySelector('#constantModal .btn-primary');
+        if (saveBtn) saveBtn.textContent = 'Save Constant';
+    }
 }
 
 function addFuncParam() {
@@ -1106,13 +1403,23 @@ async function saveFunction() {
     };
 
     try {
-        const res = await fetch('/functions', {
-            method: 'POST',
+        const url = editingFunctionId ? `/functions/${editingFunctionId}` : '/functions';
+        const method = editingFunctionId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
         if (res.ok) {
-            showToast('Function saved');
+            showToast(editingFunctionId ? 'Function updated' : 'Function saved');
+            editingFunctionId = null;
+            document.getElementById('funcName').value = '';
+            document.getElementById('funcDesc').value = '';
+            document.getElementById('funcCode').value = '';
+            document.getElementById('funcReturn').value = 'any';
+            document.getElementById('funcParams').innerHTML = '';
+            const saveBtn = document.querySelector('#functionModal .btn-primary');
+            if (saveBtn) saveBtn.textContent = 'Save Function';
             loadFunctionList();
             setTimeout(() => location.reload(), 500);
         }
@@ -1129,10 +1436,39 @@ async function loadFunctionList() {
         container.innerHTML = funcs.map(f => `
             <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-900 rounded text-sm">
                 <span class="font-medium text-body">${f.name}</span>
-                <button onclick="deleteFunction(${f.id})" class="text-red text-xs hover:underline">Delete</button>
+                <div class="flex gap-2">
+                    <button onclick="editFunction(${f.id})" class="text-primary text-xs hover:underline">Edit</button>
+                    <button onclick="deleteFunction(${f.id})" class="text-red text-xs hover:underline">Delete</button>
+                </div>
             </div>
         `).join('');
     } catch (e) {}
+}
+
+async function editFunction(id) {
+    try {
+        const res = await fetch(`/functions/${id}`);
+        const f = await res.json();
+        editingFunctionId = id;
+        document.getElementById('funcName').value = f.name;
+        document.getElementById('funcDesc').value = f.description || '';
+        document.getElementById('funcCode').value = f.code;
+        document.getElementById('funcReturn').value = f.return_type || 'any';
+        
+        const paramsContainer = document.getElementById('funcParams');
+        paramsContainer.innerHTML = '';
+        (f.params || []).forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'flex gap-2';
+            row.innerHTML = `<input type="text" placeholder="name" class="func-param-name flex-1 form-input" style="padding:4px 8px;font-size:12px" value="${p.name}"><select class="func-param-type form-select" style="padding:4px 8px;font-size:12px;width:auto"><option value="str" ${p.type === 'str' ? 'selected' : ''}>str</option><option value="int" ${p.type === 'int' ? 'selected' : ''}>int</option><option value="float" ${p.type === 'float' ? 'selected' : ''}>float</option><option value="bool" ${p.type === 'bool' ? 'selected' : ''}>bool</option><option value="json" ${p.type === 'json' ? 'selected' : ''}>json</option></select><button type="button" onclick="this.parentElement.remove()" class="text-red px-1">&times;</button>`;
+            paramsContainer.appendChild(row);
+        });
+        
+        const saveBtn = document.querySelector('#functionModal .btn-primary');
+        if (saveBtn) saveBtn.textContent = 'Update Function';
+    } catch (e) {
+        showToast('Error loading function', 'error');
+    }
 }
 
 async function deleteFunction(id) {
@@ -1143,6 +1479,12 @@ async function deleteFunction(id) {
 }
 
 function openConstantModal() {
+    editingConstantId = null;
+    document.getElementById('constName').value = '';
+    document.getElementById('constValue').value = '';
+    document.getElementById('constType').value = 'str';
+    const saveBtn = document.querySelector('#constantModal .btn-primary');
+    if (saveBtn) saveBtn.textContent = 'Save Constant';
     document.getElementById('constantModal').classList.remove('hidden');
     loadConstantList();
 }
@@ -1154,13 +1496,21 @@ async function saveConstant() {
         type: document.getElementById('constType').value
     };
     try {
-        const res = await fetch('/constants', {
-            method: 'POST',
+        const url = editingConstantId ? `/constants/${editingConstantId}` : '/constants';
+        const method = editingConstantId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
         if (res.ok) {
-            showToast('Constant saved');
+            showToast(editingConstantId ? 'Constant updated' : 'Constant saved');
+            editingConstantId = null;
+            document.getElementById('constName').value = '';
+            document.getElementById('constValue').value = '';
+            document.getElementById('constType').value = 'str';
+            const saveBtn = document.querySelector('#constantModal .btn-primary');
+            if (saveBtn) saveBtn.textContent = 'Save Constant';
             loadConstantList();
             setTimeout(() => location.reload(), 500);
         }
@@ -1177,10 +1527,29 @@ async function loadConstantList() {
         container.innerHTML = consts.map(c => `
             <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-900 rounded text-sm">
                 <span class="font-medium text-body">${c.name} = ${c.value}</span>
-                <button onclick="deleteConstant(${c.id})" class="text-red text-xs hover:underline">Delete</button>
+                <div class="flex gap-2">
+                    <button onclick="editConstant(${c.id})" class="text-primary text-xs hover:underline">Edit</button>
+                    <button onclick="deleteConstant(${c.id})" class="text-red text-xs hover:underline">Delete</button>
+                </div>
             </div>
         `).join('');
     } catch (e) {}
+}
+
+async function editConstant(id) {
+    try {
+        const res = await fetch(`/constants/${id}`);
+        const c = await res.json();
+        editingConstantId = id;
+        document.getElementById('constName').value = c.name;
+        document.getElementById('constValue').value = c.value;
+        document.getElementById('constType').value = c.type;
+        
+        const saveBtn = document.querySelector('#constantModal .btn-primary');
+        if (saveBtn) saveBtn.textContent = 'Update Constant';
+    } catch (e) {
+        showToast('Error loading constant', 'error');
+    }
 }
 
 async function deleteConstant(id) {
